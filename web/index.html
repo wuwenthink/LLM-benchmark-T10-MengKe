@@ -258,9 +258,11 @@ tr:hover td{background:var(--panel-2)}
 .matrix-cell.fail{background:linear-gradient(135deg,#e06060 50%,#f8baba 50%)!important;color:#fff!important;text-shadow:0 1px 1px rgba(0,0,0,.28)}
 .matrix-cell.error{background:var(--err)!important;color:#fff!important;text-shadow:0 1px 1px rgba(0,0,0,.28)}
 .matrix-cell.running{background:var(--run)!important;color:#fff!important;text-shadow:0 1px 1px rgba(0,0,0,.28);animation:pulse-blue 1.5s infinite}
-/* 浅蓝「也在跑」: 紧挨蓝格的并发在途格(并发数>1 时才出现) */
+/* 浅蓝「也在跑」: 蓝格之外的并发在途格(并发数>1 时才出现) */
 .matrix-cell.queued{background:rgba(37,99,235,.18)!important;border:1px solid rgba(37,99,235,.55)!important;color:#93b4f5!important;cursor:default}
 .matrix-cell.pending{background:var(--panel-2)!important;color:var(--muted)}
+/* 已判完但还没被前沿点亮(严格顺序): 保持灰色观感, 用极淡斜纹表示"这里其实已经出结果了" */
+.matrix-cell.pending-done{background:repeating-linear-gradient(45deg,var(--panel-2) 0 4px,rgba(148,163,184,.16) 4px 8px)!important;color:var(--muted-2);cursor:pointer}
 .matrix-cell.pending:hover{background:var(--panel)!important}
 .matrix-cell.none{background:#d4a017!important;color:#fff!important;text-shadow:0 1px 1px rgba(0,0,0,.28)}
 .matrix-cell.none:hover{background:#e8b62c!important}
@@ -498,7 +500,13 @@ let HM_ACC={}, HM_LIVE=false, QORDER={}, RUN_SK=null;
    - CELLS: 已判定格子 `round|ep|qid` -> code(1 pass/2 fail/3 err/4 已答未评分)；单槽单状态、终态原地覆盖
    - 进行中: 每行(轮次×端点)最多 1 格涂蓝(最早在途)，其余在途=浅蓝点「并行处理中」格 + 行标签 +N 在途；停止后绝不复活蓝格 */
 let SKEL=null, CELLS={}, SCORES={}, MATX_SIG="", MATR_CELL={}, RUNNING_CELLS=new Set(), QUEUE_CELLS=new Set(), LIVE_VISIBLE=new Set(), LANE_INFLIGHT={}, LIVE_SEQ=0;
-function resetHM(){HM_ACC={};HM_LIVE=false;QORDER={};SKEL=null;CELLS={};SCORES={};MATX_SIG="";MATR_CELL={};RUNNING_CELLS=new Set();QUEUE_CELLS=new Set();LIVE_VISIBLE=new Set();LANE_INFLIGHT={};LIVE_SEQ=0;RES_META.padCells=null;RUN_SK=null;}
+// 在途格已运行秒数 + 每泳道最久在途时长 + 每泳道蓝格(前沿)键 —— 用于行标签/提示里解释"卡在哪"
+let CELL_ELAPSED={}, LANE_MAX_ELAPSED={}, LANE_FRONTIER={};
+// LIVE_MASK: 「严格顺序」遮罩是否生效(仅运行中为 true; 与 LIVE_VISIBLE 是否为空无关)
+let LIVE_MASK=false;
+function fmtDur(s){s=Math.max(0,Math.round(s||0));const m=Math.floor(s/60);
+  return m?`${m}m${String(s%60).padStart(2,"0")}s`:`${s}s`;}
+function resetHM(){HM_ACC={};HM_LIVE=false;LIVE_MASK=false;QORDER={};SKEL=null;CELLS={};SCORES={};MATX_SIG="";MATR_CELL={};RUNNING_CELLS=new Set();QUEUE_CELLS=new Set();LIVE_VISIBLE=new Set();LANE_INFLIGHT={};LIVE_SEQ=0;CELL_ELAPSED={};LANE_MAX_ELAPSED={};LANE_FRONTIER={};RES_META.padCells=null;RUN_SK=null;}
 let BROWSE={items:[],all:[],page:0,per:120,search:"",tier:"",domain:"",benchmark:"",loading:false};
 const BROWSE_CACHE={};
 let HIST_CACHE={};
@@ -957,16 +965,25 @@ function renderLiveHeatmap(lv,st){
   //    - **只有蓝格之前的格子显示真实颜色**(通过/部分/失败/错误/未评分), 蓝格之后一律留灰 ——
   //      即使某题已经判完(并发下常有)也先不点亮, 等蓝格走到它时才亮, 于是矩阵读起来就是
   //      「一条从左往右推进的进度条」, 不会出现灰区里孤零零的绿格;
-  //    - 紧挨蓝格、且确实在途的并发格子用浅蓝「也在跑」标出(并发数>1 时看得到谁在并行),
-  //      行标签另外写 `+N 在途`。
+  //    - 蓝格之后**所有**在途格都用浅蓝「也在跑」标出(不是只标紧挨着的那几个) ——
+  //      真实端点上一道慢题(重试/超时, 实测有 228s/300s/800s 的题)会把蓝格按住好几分钟,
+  //      期间十几道题早已跑完; 若这些在途格不涂浅蓝, 整屏就只有一颗蓝格孤零零卡着,
+  //      看起来像"程序死了"(用户 2026-09-17 反馈)。行标签同时写 `+N 在途` 与最久在途时长。
   RUNNING_CELLS=new Set();QUEUE_CELLS=new Set();LIVE_VISIBLE=new Set();
+  // LANE_INFLIGHT 也必须每轮清零: /live 的 running_now 是"当前在途快照", 累加不清零会把
+  // `+N 在途` 越滚越大(旧实现的遗留 bug)。
+  LANE_INFLIGHT={};CELL_ELAPSED={};LANE_MAX_ELAPSED={};LANE_FRONTIER={};
   const liveRun=st.running||st.cancelling;
+  LIVE_MASK=!!liveRun;
   if(liveRun){
-    const LANE_KEYS={};
+    const LANE_KEYS={},nowS=Date.now()/1000;
     (lv.running_now||[]).forEach(k=>{
       const lane=(k.round||1)+"|"+(k.ep||"");
       LANE_INFLIGHT[lane]=(LANE_INFLIGHT[lane]||0)+1;
-      (LANE_KEYS[lane]=LANE_KEYS[lane]||new Set()).add((k.round||1)+"|"+(k.ep||"")+"|"+k.qid);
+      const ck=(k.round||1)+"|"+(k.ep||"")+"|"+k.qid;
+      (LANE_KEYS[lane]=LANE_KEYS[lane]||new Set()).add(ck);
+      if(k.ts){CELL_ELAPSED[ck]=Math.max(0,nowS-k.ts);
+        LANE_MAX_ELAPSED[lane]=Math.max(LANE_MAX_ELAPSED[lane]||0,CELL_ELAPSED[ck]);}
     });
     const order=matrixQListFiltered().map(q=>q.qid);
     const lanes=new Set(Object.keys(LANE_KEYS));
@@ -976,15 +993,15 @@ function renderLiveHeatmap(lv,st){
       const i=lane.indexOf("|"),rnd=lane.slice(0,i),ep=lane.slice(i+1);
       const keys=order.map(qid=>rnd+"|"+ep+"|"+qid);
       const fi=keys.findIndex(k=>CELLS[k]===undefined);
-      if(fi<0)return;                                  // 该泳道已全部完成
-      keys.slice(0,fi).forEach(k=>LIVE_VISIBLE.add(k)); // 前沿之前 → 保持真实颜色
-      if(!LANE_INFLIGHT[lane])return;                   // 该泳道暂无在途请求 → 不涂蓝
+      if(fi<0){keys.forEach(k=>LIVE_VISIBLE.add(k));return;} // 该泳道已全部完成 → 全部点亮
+      keys.slice(0,fi).forEach(k=>LIVE_VISIBLE.add(k));      // 前沿之前 → 保持真实颜色
+      if(!LANE_INFLIGHT[lane])return;                        // 该泳道暂无在途请求 → 不涂蓝
       RUNNING_CELLS.add(keys[fi]);
-      const fly=LANE_KEYS[lane]||new Set();
-      for(let j=fi+1;j<keys.length;j++){                // 紧挨前沿的在途格 → 浅蓝「也在跑」
-        if(!fly.has(keys[j]))break;
-        QUEUE_CELLS.add(keys[j]);
-      }
+      LANE_FRONTIER[lane]=keys[fi];
+    });
+    // 蓝格之外的在途格全部浅蓝(跨泳道统一收进一个集合, cellStatusOf 只做成员判断)
+    Object.keys(LANE_KEYS).forEach(lane=>{
+      (LANE_KEYS[lane]||new Set()).forEach(k=>{if(!RUNNING_CELLS.has(k))QUEUE_CELLS.add(k)});
     });
   }
   if(lv.run_id!=null)HM_LIVE=true;
@@ -1087,6 +1104,7 @@ async function loadResults(runId,opt){
         if(typeof x.score==="number")SCORES[k]=x.score;   // 部分得分上格子(主观题 0.1~0.9)
       });
       RUNNING_CELLS=new Set();QUEUE_CELLS=new Set();LIVE_VISIBLE=new Set();LANE_INFLIGHT={};
+      LIVE_MASK=false;   // 评测结束: 严格顺序遮罩关闭, 全部格子显示真实颜色
       $("#liveCard").style.display="none"; // 结束/回看: 实时面板让位给正式结果
       HM_LIVE=false;$("#hmLiveTag").style.display="none";
       renderStats();
@@ -1296,7 +1314,7 @@ let PAGE=0;
       因此蓝格永远从左往右顺序推进, 蓝格前面不可能出现未完成格; 其余并发在途数只写行标签 `+N 在途`。
       题号写在格子内部, 列序 = 骨架序 = 引擎派题序。
    R4 状态变化命令式 patch 单格(不整表重建) → 进行中蓝格动画不随 3s 轮询重启 = 不闪烁。 */
-const CELL_TITLE={pass:"通过",fail:"失败",error:"错误",running:"进行中",queued:"并行处理中(也在跑)",none:"已答未评分",part:"部分得分",pending:"未完成"};
+const CELL_TITLE={pass:"通过",fail:"失败",error:"错误",running:"进行中",queued:"并行处理中(也在跑)",none:"已答未评分",part:"部分得分",pending:"未完成","pending-done":"已判完，待前沿点亮"};
 /* 每行(轮次×端点)格子数上限: 超过 20 格换到下一行继续显示(2026-09-16 按用户要求) */
 const MX_PER_ROW=20;
 function mxGridStyle(n){
@@ -1307,8 +1325,11 @@ function cellKey(rnd,ep,qid){return (rnd||1)+"|"+(ep||"")+"|"+(qid||"");}
 function cellStatusOf(key){
   // 终态优先; 运行中额外套一层「严格顺序」遮罩(LIVE_VISIBLE = 蓝格之前的格子):
   // 蓝格之后即使已判完也先显示未完成, 等前沿走到它再点亮 → 不会出现灰区里的绿格。
+  // 注意遮罩开关只看 LIVE_MASK(是否正在跑), **不能**写成 LIVE_VISIBLE.size>0:
+  // 卡住的若是第 1 题, 前沿之前一个格子都没有 → 集合为空 → 旧条件会把遮罩整个关掉,
+  // 已判完的格子直接露出真实颜色, 显示规则时灵时不灵(2026-09-17 修复)。
   const c=CELLS[key];
-  const masked=HM_LIVE&&LIVE_VISIBLE.size>0&&!LIVE_VISIBLE.has(key);
+  const masked=HM_LIVE&&LIVE_MASK&&!LIVE_VISIBLE.has(key);
   if(!masked){
     if(c===1)return "pass";
     if(c===2)return "fail";
@@ -1317,13 +1338,24 @@ function cellStatusOf(key){
     if(c===5)return "part";
   }
   if(RUNNING_CELLS.has(key))return "running";
-  if(QUEUE_CELLS.has(key))return "queued";   // 浅蓝「也在跑」: 紧挨前沿的并发在途格
-  return "pending";
+  if(QUEUE_CELLS.has(key))return "queued";   // 浅蓝「也在跑」: 蓝格之外所有在途格
+  // 被严格顺序遮住、但实际已判完 → 用很淡的斜纹和"还没轮到"的格子区分开:
+  // 既保持"蓝格之后一律灰"的观感, 又能一眼看出灰区里其实一直在出结果(不再像卡死)。
+  return (masked&&c!==undefined)?"pending-done":"pending";
 }
 // 蓝格之外的并发在途数 = 行标签 `+N 在途`(不单独占特殊格子)
 function laneQueueCount(rnd,ep){
   const n=LANE_INFLIGHT[(rnd||1)+"|"+(ep||"")]||0;
   return Math.max(0,n-1);
+}
+// 行标签补充说明: 蓝格卡在哪个题、卡了多久(真实端点慢题/超时可达几分钟)
+function laneHint(rnd,ep){
+  const lane=(rnd||1)+"|"+(ep||""),fk=LANE_FRONTIER[lane];
+  if(!fk)return "";
+  const secs=CELL_ELAPSED[fk]||0;
+  if(secs<45)return "";                       // 正常题 10~30s, 45s 以上才值得提示
+  const qid=String(fk).split("|")[2]||"";
+  return `<div class="mx-cnt" style="color:var(--amber)" title="该题仍在请求中(慢题/重试/超时), 蓝格会一直停在它上面; 后面的格子按严格顺序等它">⏳ ${esc(qid)} 已 ${fmtDur(secs)}</div>`;
 }
 function natOrd(qid){const q=String(qid||""),m=q.match(/(\d+)$/);return m?[+m[1],q]:[Number.MAX_SAFE_INTEGER,q];}
 function matrixQList(){
@@ -1377,15 +1409,30 @@ function livePseudoResults(){
 function bindMatrixCell(el,q,ep,st){
   const key=el.dataset.key||"",rnd=(key.split("|")[0])||1,sc=SCORES[key];
   const judged=CELLS[key]!==undefined;
-  // 提示里带上真实分数(含 0.1~0.9 的部分得分), 与首屏构建时的 title 保持一致
+  const masked=(st==="pending"||st==="pending-done");
+  const el_s=CELL_ELAPSED[key];
+  // 提示里带上真实分数(含 0.1~0.9 的部分得分)与在途耗时, 与首屏构建时的 title 保持一致
   el.title=`${q.qid} · ${q.benchmark||""}/${q.difficulty||""} · R${rnd} · ${ep} · ${CELL_TITLE[st]||st}`
-    +((typeof sc==="number"&&st!=="pending")?` · 得分 ${sc.toFixed(2)}`:"")
-    +((judged&&st==="pending")?" · 已判完，等蓝格走到时点亮（运行中严格按顺序显示）":"");
+    +((typeof sc==="number"&&!masked)?` · 得分 ${sc.toFixed(2)}`:"")
+    +(((st==="running"||st==="queued")&&el_s)?` · 已运行 ${fmtDur(el_s)}`:"")
+    +((judged&&masked)?" · 已判完，等蓝格走到时点亮（运行中严格按顺序显示；前面那道慢题结束才会推进）":"");
   el.onclick=null;delete el.dataset.qid;delete el.dataset.ep;delete el.dataset.bm;
-  if(st!=="pending"||judged){   // 已判完但还没点亮的格子照样可点开详情
+  if(!masked||judged){   // 已判完但还没点亮的格子照样可点开详情
     el.dataset.qid=q.qid;el.dataset.ep=ep;el.dataset.bm=q.benchmark||"";
     el.onclick=()=>openInspector(q.qid,ep,q.benchmark||"");
   }
+}
+// 行标签内容(满分统计 / +N 在途 / 慢题耗时): 首屏构建与增量刷新共用, 保证两边永远一致
+function laneLabelHtml(rnd,ep,qs){
+  let rowPass=0,rowPart=0,rowFail=0;
+  qs.forEach(q=>{const st=cellStatusOf(cellKey(rnd,ep,q.qid));
+    if(st==="pass")rowPass++;else if(st==="part")rowPart++;else if(st==="fail"||st==="error")rowFail++;});
+  const judged=rowPass+rowPart+rowFail;   // 部分得分计入已判定, 但不算满分
+  let stat="";
+  if(judged)stat=`<div class="mx-cnt">满分 ${rowPass}/${judged}${rowPart?` · 部分 ${rowPart}`:""}</div>`;
+  const rq=laneQueueCount(rnd,ep);
+  if(rq)stat+=`<div class="mx-cnt">+${rq} 在途</div>`;
+  return stat+laneHint(rnd,ep);   // 蓝格卡在慢题上时显示题号与已耗时
 }
 function renderMatrix(){
   const dom=$("#hmDomain").value,diff=$("#hmDiff").value,kw=$("#hmSearch").value.trim().toLowerCase();
@@ -1395,9 +1442,11 @@ function renderMatrix(){
   const isBuild=(sig!==MATX_SIG);
   MATX_SIG=sig;
   // 统计始终从骨架×单槽状态推 → 算出来的数与格子永远对得上
-  const cnt={pass:0,fail:0,error:0,running:0,queued:0,none:0,part:0,pending:0};let total=0;
+  const cnt={pass:0,fail:0,error:0,running:0,queued:0,none:0,part:0,pending:0,pendingDone:0};let total=0;
   for(let rnd=1;rnd<=rnds;rnd++)for(const ep of eps)for(const q of qs){
-    cnt[cellStatusOf(cellKey(rnd,ep,q.qid))]++;total++;
+    const _s=cellStatusOf(cellKey(rnd,ep,q.qid));
+    if(_s==="pending-done"){cnt.pendingDone++;cnt.pending++;}else cnt[_s]++;
+    total++;
   }
   const legend=`<div class="matrix-legend">
     <span><i class="cell" style="background:var(--ok)"></i>通过(满分) ${cnt.pass}</span>
@@ -1405,10 +1454,11 @@ function renderMatrix(){
     <span><i class="cell" style="background:linear-gradient(135deg,#e06060 50%,#f8baba 50%)"></i>失败(0 分) ${cnt.fail}</span>
     <span><i class="cell" style="background:var(--err)"></i>错误 ${cnt.error}</span>
     <span><i class="cell" style="background:var(--run)"></i>进行中(蓝格=当前前沿) ${cnt.running}</span>
-    ${cnt.queued?`<span><i class="cell" style="background:rgba(37,99,235,.35)"></i>也在跑(并发) ${cnt.queued}</span>`:""}
+    ${cnt.queued?`<span><i class="cell" style="background:rgba(37,99,235,.35)"></i>也在跑(并发在途) ${cnt.queued}</span>`:""}
     <span><i class="cell" style="background:#d4a017"></i>已答未评分 ${cnt.none}</span>
+    ${cnt.pendingDone?`<span><i class="cell" style="background:repeating-linear-gradient(45deg,var(--panel-2) 0 4px,rgba(148,163,184,.16) 4px 8px)"></i>已判完待点亮 ${cnt.pendingDone}</span>`:""}
     <span><i class="cell" style="background:var(--panel-2);border:1px dashed var(--line)"></i>未完成 ${cnt.pending}</span>
-    <span class="muted-2">共 ${total} 格（${qs.length} 题 × ${eps.length} 端点 × ${rnds} 轮） · 格内 Q 编号=第几道题 · <b>橙格/小数(如 0.6)=该题部分得分</b> · 运行中蓝格之后一律留灰，蓝格走到才点亮 · 每行最多 ${MX_PER_ROW} 格，超出自动换行 · 点格子看详情</span></div>`;
+    <span class="muted-2">共 ${total} 格（${qs.length} 题 × ${eps.length} 端点 × ${rnds} 轮） · 格内 Q 编号=第几道题 · <b>橙格/小数(如 0.6)=该题部分得分</b> · 运行中蓝格之后一律留灰，蓝格走到才点亮（斜纹格=其实已判完，在等前面那道慢题） · 每行最多 ${MX_PER_ROW} 格，超出自动换行 · 点格子看详情</span></div>`;
   // 格内内容: 题号(Q01..) + 部分得分(0.1~0.9 才显示小数, 通过/失败的 1.0/0.0 交给颜色表达)
   const qlab=i=>{const n=i+1;return n<100?("Q"+String(n).padStart(2,"0")):("Q"+n)};
   const fsOf=s=>s.length<=3?"10px":(s.length===4?"9px":"8px");
@@ -1428,23 +1478,18 @@ function renderMatrix(){
     const gridStyle=mxGridStyle(qs.length);
     for(let rnd=1;rnd<=rnds;rnd++){
       for(const ep of eps){
-        let cells="",rowPass=0,rowPart=0,rowFail=0;
-        const rowQueue=laneQueueCount(rnd,ep); // 蓝格之外并发在途数 → 只写行标签, 不占特殊格
+        let cells="";
         qs.forEach(q=>{
           const key=cellKey(rnd,ep,q.qid),st=cellStatusOf(key),sc=SCORES[key];
-          if(st==="pass")rowPass++;else if(st==="part")rowPart++;else if(st==="fail"||st==="error")rowFail++;
           // 运行中被「严格顺序」遮住的格子不提前泄露分数(题号照常显示)
-          const shown=(st==="pending")?undefined:sc;
+          const shown=(st==="pending"||st==="pending-done")?undefined:sc;
           cells+=`<div class="matrix-cell ${st}" data-key="${esc(key)}" data-st="${st}" data-sc="${typeof sc==="number"?sc:""}" title="${cellTip(q,ep,rnd,st,shown)}">`
                + `${cellInner(q.qid,shown)}</div>`;
         });
         const rlab=(rnds>1?`R${rnd}·`:"")+(ep||"");
-        let stat="";
-        // 满分/已判定(部分得分计入已判定, 但不算满分)
-        const judged=rowPass+rowPart+rowFail;
-        if(judged)stat=`<div class="mx-cnt">满分 ${rowPass}/${judged}${rowPart?` · 部分 ${rowPart}`:""}</div>`;
-        if(rowQueue)stat+=`<div class="mx-cnt">+${rowQueue} 在途</div>`;
-        html+=`<div class="mx-round"><span class="mx-rlab" title="${rnds>1?"第"+rnd+"轮 · ":""}${esc(ep)}">${esc(rlab)}${stat}</span><div class="mx-cells" style="${gridStyle}">${cells}</div></div>`;
+        const stat=laneLabelHtml(rnd,ep,qs);
+        const lid=`mxl_${rnd}_${eps.indexOf(ep)}`;
+        html+=`<div class="mx-round"><span class="mx-rlab" id="${lid}" title="${rnds>1?"第"+rnd+"轮 · ":""}${esc(ep)}">${esc(rlab)}${stat}</span><div class="mx-cells" style="${gridStyle}">${cells}</div></div>`;
       }
     }
     const box=$("#heatmapBox");
@@ -1466,11 +1511,22 @@ function renderMatrix(){
       if(!MATR_CELL[key]||!MATR_CELL[key].isConnected){MATX_SIG="";renderMatrix();return}
       const st=cellStatusOf(key),el=MATR_CELL[key],sc=SCORES[key];
       const scKey=(typeof sc==="number")?String(sc):"";
-      if(el.dataset.st===st&&el.dataset.sc===scKey)continue;
-      const shown=(st==="pending")?undefined:sc;
-      el.className="matrix-cell "+st;el.dataset.st=st;el.dataset.sc=scKey;
+      // 在途耗时每秒都在变 → 一并纳入"是否需要重绘"的判断(否则行标签/提示里的耗时不会刷新);
+      // 只比到 5 秒粒度, 避免每轮 poll 都重写全部格子。
+      const el_s=Math.round((CELL_ELAPSED[key]||0)/5);
+      if(el.dataset.st===st&&el.dataset.sc===scKey&&el.dataset.el===String(el_s))continue;
+      const shown=(st==="pending"||st==="pending-done")?undefined:sc;
+      el.className="matrix-cell "+st;el.dataset.st=st;el.dataset.sc=scKey;el.dataset.el=String(el_s);
       el.innerHTML=cellInner(q.qid,shown);
       bindMatrixCell(el,q,ep,st);
+    }
+    // 行标签也要跟着刷新: `+N 在途` 会随并发涨落, 慢题耗时要一秒秒往上走(否则看起来像卡死)
+    for(let rnd=1;rnd<=rnds;rnd++)for(const ep of eps){
+      const lab=document.getElementById(`mxl_${rnd}_${eps.indexOf(ep)}`);
+      if(!lab){MATX_SIG="";renderMatrix();return}
+      const rlab=(rnds>1?`R${rnd}·`:"")+(ep||"");
+      const want=esc(rlab)+laneLabelHtml(rnd,ep,qs);
+      if(lab.innerHTML!==want)lab.innerHTML=want;
     }
   }
 }
