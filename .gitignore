@@ -9,6 +9,8 @@ env/
 data/run_*.json
 data/run_*_skeleton.json
 data/run_*_results.json
+# 上次用过的梦客工具箱地址(机器相关, 不入库)
+data/box_url.json
 
 # OS / 编辑器
 .DS_Store

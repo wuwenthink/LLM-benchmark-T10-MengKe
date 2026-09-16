@@ -49,21 +49,91 @@ app.include_router(quality_router)
 
 
 @app.get("/api/snapshot")
-async def snapshot():
-    """推理服务清单(可选扩展点)。
+async def snapshot(box: str | None = None):
+    """推理服务清单(扩展点): 本工具自己不扫描集群, 但可以从「梦客工具箱」代取。
 
-    本工具默认不扫描任何集群, 因此返回空清单 —— 请在页面端点列表手动填写
-    OpenAI 兼容服务地址(如 http://127.0.0.1:8000)。
-    若你的部署环境能提供推理实例清单, 按下面的结构返回, 页面上的
-    「自动获取运行中推理」按钮即可一键生成端点:
+    「自动获取运行中推理」按钮会依次尝试:
+      1) 本接口不带参数 → 用已知的工具箱地址(环境变量/上次成功用过的/127.0.0.1:17888)代取;
+      2) 带 ?box=http://<工具箱>:17888 → 直接代取该地址的 /api/snapshot
+         (浏览器直连工具箱会被 CORS 拦住, 所以由本地服务端代理转发)。
+    都拿不到时返回空清单, 页面会提示手动填写(任意 OpenAI 兼容服务都支持)。
 
-        {"ok": true,
-         "hosts": {"<host_id>": {"display_ip": "10.0.0.1"}},
+    工具箱快照结构(原样透传):
+        {"hosts": {"<host_id>": {"display_ip": "10.0.0.1"}},
          "inferences": [{"state": "running",
-                         "instances": [{"base_url": "http://10.0.0.1:8000",
-                                        "model": "my-model"}]}]}
+                         "instances": [{"host_id": "...", "api_port": 8000,
+                                        "served_model_name": "my-model"}]}]}
     """
-    return JSONResponse({"ok": True, "hosts": {}, "inferences": []})
+    import httpx
+
+    def _candidates():
+        out = []
+        for k in ("MENGKE_BOX_URL", "QTEST_BOX_URL"):
+            v = os.environ.get(k)
+            if v:
+                out.append(v)
+        saved = _load_box_url()
+        if saved:
+            out.append(saved)
+        out.append("http://127.0.0.1:17888")
+        if box:
+            out.insert(0, box)
+        # 去重 + 补协议 + 去掉末尾斜杠
+        seen, uniq = set(), []
+        for u in out:
+            u = (u or "").strip().rstrip("/")
+            if not u:
+                continue
+            if not u.startswith(("http://", "https://")):
+                u = "http://" + u
+            if u not in seen:
+                seen.add(u)
+                uniq.append(u)
+        return uniq
+
+    errors = []
+    async with httpx.AsyncClient(timeout=httpx.Timeout(12.0, connect=5.0)) as client:
+        for base in _candidates():
+            try:
+                r = await client.get(base + "/api/snapshot")
+                if r.status_code != 200:
+                    errors.append(f"{base} -> HTTP {r.status_code}")
+                    continue
+                data = r.json()
+                if not isinstance(data, dict):
+                    errors.append(f"{base} -> 返回格式不是对象")
+                    continue
+                _save_box_url(base)          # 记下可用的工具箱地址, 下次直接用
+                data["box_url"] = base
+                return JSONResponse(data)
+            except Exception as e:                      # noqa: BLE001
+                errors.append(f"{base} -> {type(e).__name__}: {str(e)[:80]}")
+    return JSONResponse({"ok": False, "hosts": {}, "inferences": [],
+                         "error": "; ".join(errors[:4]) or "no toolbox url",
+                         "hint": "本按钮只能通过梦客工具箱获取API，当前无工具箱启动，请手动填写。"})
+
+
+# 上次成功用过的梦客工具箱地址(存在 data/box_url.json, 不参与版本控制)
+BOX_URL_FILE = DATA_DIR / "box_url.json"
+
+
+def _load_box_url():
+    try:
+        import json
+        v = json.loads(BOX_URL_FILE.read_text(encoding="utf-8")).get("box_url")
+        return v if isinstance(v, str) else None
+    except Exception:
+        return None
+
+
+def _save_box_url(url: str):
+    try:
+        import json
+        if _load_box_url() == url:
+            return
+        BOX_URL_FILE.write_text(json.dumps({"box_url": url}, ensure_ascii=False, indent=1), encoding="utf-8")
+    except Exception:
+        pass
 
 
 @app.get("/")
