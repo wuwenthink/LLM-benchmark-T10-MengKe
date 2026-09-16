@@ -78,7 +78,42 @@ def _load_questions() -> list[dict]:
     qs = _load_questions_sync()
     _QS_CACHE["key"] = key
     _QS_CACHE["qs"] = qs
+    _build_tier_map(qs)
     return qs
+
+
+# ---- 五档难度(小白/简单/中等/困难/极难): qid → 档位 的查表, 给历史 run 的骨架/结果补字段 ----
+_TIER_MAP: dict[str, str] = {}
+
+
+def _build_tier_map(qs: list[dict]) -> None:
+    _TIER_MAP.clear()
+    for q in qs or []:
+        qid = q.get("id")
+        if qid is not None:
+            _TIER_MAP[str(qid)] = qe.diff_tier(q)
+
+
+def _tier_of(qid, fallback: str | None = None) -> str:
+    t = _TIER_MAP.get(str(qid))
+    if t:
+        return t
+    if not _TIER_MAP:                      # 题库还没加载过 → 触发一次加载并建表
+        try:
+            _load_questions_sync()
+            _build_tier_map(_QS_CACHE.get("qs") or [])
+        except Exception:
+            pass
+        t = _TIER_MAP.get(str(qid))
+    return t or fallback or "中等"
+
+
+def _enrich_tiers(items) -> list:
+    """给骨架题目 / 结果行补 diff_tier(修复前落盘的历史 run 没有这个字段)。"""
+    for it in items or []:
+        if isinstance(it, dict) and not it.get("diff_tier"):
+            it["diff_tier"] = _tier_of(it.get("qid"), it.get("difficulty"))
+    return items or []
 
 
 def _load_questions_sync() -> list[dict]:
@@ -105,7 +140,8 @@ def _load_questions_sync() -> list[dict]:
 
 def _summary(q: dict) -> dict:
     return {"id": q["id"], "benchmark": q["benchmark"], "domain": q["domain"],
-            "difficulty": q["difficulty"], "lang": q.get("lang", "en"),
+            "difficulty": q["difficulty"], "diff_tier": qe.diff_tier(q),
+            "lang": q.get("lang", "en"),
             "judge": q["judge"]["type"]}
 
 
@@ -374,8 +410,10 @@ async def start_run(req: RunRequest):
         # 档位构建 & 落盘 run 描述
         tier_cfg = await asyncio.to_thread(qe.build_tier, qs, req.tier, budget, per_bm_cap=5000)
         if req.difficulty_filter:
+            # 支持五档(小白/简单/中等/困难/极难)与旧的三档(easy/medium/hard)两种写法
             df = set(req.difficulty_filter)
-            tier_cfg["items"] = [i for i in tier_cfg["items"] if i.get("difficulty") in df]
+            tier_cfg["items"] = [i for i in tier_cfg["items"]
+                                 if qe.diff_tier(i) in df or i.get("difficulty") in df]
             tier_cfg["n"] = len(tier_cfg["items"])
         if req.sample_n and req.sample_n > 0:
             tier_cfg["items"] = tier_cfg["items"][: req.sample_n]
@@ -422,6 +460,11 @@ async def start_run(req: RunRequest):
                 _state["running"] = False
                 raise HTTPException(400, f"运行 #{run_id} 已全部完成({done_start} 题轮), 无需续跑")
             est_min = tier_cfg["est_wall_min"] * (len(tier_cfg["items"]) * req.rounds) / max(1, total_all)
+        # 执行序 & 热力图列序 = 难度序(小白→简单→中等→困难→极难), 同级按题号自然序
+        # (2026-09-17 按用户要求)。注意必须放在 difficulty_filter 与 sample_n 之后:
+        # 否则「题数上限」会把最简单的前 N 道切走, 难度覆盖就没了。
+        tier_cfg["items"] = qe.sort_by_difficulty(tier_cfg["items"])
+        items_all = qe.sort_by_difficulty(items_all)
         # 实时热力图骨架: 一次性全量存内存 + 由 /skeleton 下发(核心不变式: 格子数量只由骨架
         # 决定，永不由结果决定)。旧版只在 ≤800 题时随 /live 传骨架 → 大档位拿不到骨架,
         # 前端只能"结果来一格补一格", 格子数永远比题目数少(用户报的数量不对)。
@@ -429,7 +472,8 @@ async def start_run(req: RunRequest):
         _state["cells"] = []
         _state["cell_seq"] = 0
         _sk_q = [{"qid": i["id"], "benchmark": i["benchmark"],
-                  "domain": i.get("domain", ""), "difficulty": i.get("difficulty", "medium")}
+                  "domain": i.get("domain", ""), "difficulty": i.get("difficulty", "medium"),
+                  "diff_tier": qe.diff_tier(i)}
                  for i in items_all]
         _state["items_lite"] = _sk_q if len(_sk_q) <= 800 else None   # 兼容旧页面缓存
         _state["endpoints_lite"] = [e.name for e in req.endpoints]
@@ -879,7 +923,9 @@ async def skeleton(run_id: Optional[int] = None):
     p = DATA_DIR / f"run_{rid}_skeleton.json"
     if p.exists():
         try:
-            return {"ok": True, "run_id": rid, **_json.loads(p.read_text(encoding="utf-8"))}
+            d = _json.loads(p.read_text(encoding="utf-8"))
+            _enrich_tiers(d.get("questions"))     # 老骨架补五档难度
+            return {"ok": True, "run_id": rid, **d}
         except Exception:
             pass
     rp = DATA_DIR / f"run_{rid}_results.json"
@@ -892,7 +938,8 @@ async def skeleton(run_id: Optional[int] = None):
     for r in res:
         seen.setdefault(r.get("qid"), {"qid": r.get("qid"), "benchmark": r.get("benchmark", ""),
                                        "domain": r.get("domain", ""),
-                                       "difficulty": r.get("difficulty", "medium")})
+                                       "difficulty": r.get("difficulty", "medium"),
+                                       "diff_tier": _tier_of(r.get("qid"), r.get("difficulty"))})
         if r.get("endpoint"):
             eps[r["endpoint"]] = True
         rnds.add(int(r.get("round") or 1))
@@ -933,7 +980,8 @@ async def results(run_id: Optional[int] = None, limit: int = Query(0, ge=0), off
         except Exception:
             pass
     return {"ok": True, "run_id": run_id, "total": total, "status": status, "rounds": _rounds,
-            "partial": status in ("running", "cancelled", "error"), "results": res}
+            "partial": status in ("running", "cancelled", "error"),
+            "results": _enrich_tiers(res)}
 
 
 @router.post("/cancel")

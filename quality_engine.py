@@ -41,6 +41,35 @@ TIERS = [
 # 难度配比: 偏难 (易25 中40 难35)
 DIFF_WEIGHTS = {"easy": 0.25, "medium": 0.40, "hard": 0.35}
 
+# ============ 五档难度 (2026-09-17 按用户要求: 小白 / 简单 / 中等 / 困难 / 极难) ============
+# 题库原始 difficulty 只有 easy / medium / hard 三档, 这里在 easy 与 hard 档**内部**再按题面
+# 规模(估 prompt+生成 token)各切一刀, 得到 5 档 —— 阈值取全库统计(easy 档中位数 207,
+# hard 档 p70 = 657), 规则确定、可复现, 且不会与题库原始标注冲突:
+#   小白 = easy 且规模 ≤207 ; 简单 = 其余 easy ; 中等 = medium ;
+#   困难 = hard 且规模 ≤657 ; 极难 = 其余 hard(长题面/长输出/多轮工具调用等重活)。
+DIFF_TIERS = ["小白", "简单", "中等", "困难", "极难"]
+DIFF_RANK = {t: i for i, t in enumerate(DIFF_TIERS)}
+DIFF_EASY_SPLIT = 207    # easy 档 (est_prompt_tok+est_gen_tok) 中位数
+DIFF_HARD_SPLIT = 657    # hard 档 (est_prompt_tok+est_gen_tok) p70
+
+
+def diff_tier(q) -> str:
+    """五档难度标签(小白/简单/中等/困难/极难)。"""
+    d = (q or {}).get("difficulty") or "medium"
+    size = ((q or {}).get("est_prompt_tok") or 0) + ((q or {}).get("est_gen_tok") or 0)
+    if d == "easy":
+        return "小白" if size <= DIFF_EASY_SPLIT else "简单"
+    if d == "hard":
+        return "极难" if size > DIFF_HARD_SPLIT else "困难"
+    return "中等"
+
+
+def sort_by_difficulty(items):
+    """派题/显示顺序 = 难度序(小白→简单→中等→困难→极难), 同级按题号自然序。
+    2026-09-17 按用户要求: 抽题仍按 benchmark 轮转分层(保证每个基准都覆盖),
+    但**执行顺序**改成从易到难, 于是测试是「越做越难」地推进, 热力图也自然按难度分带。"""
+    return sorted(items, key=lambda q: (DIFF_RANK.get(diff_tier(q), 2), _nat_key(q)))
+
 # ============ 加载题集 ============
 def load_questions(path):
     qs = []
@@ -159,8 +188,10 @@ def build_tier(qs, name, budget_min, per_bm_cap=2000, seed=42, endpoints_n=3, co
 
 def finalize(selected, name, budget_min, total_sec, concurrency=CONCURRENCY, endpoints_n=3):
     diff_count = defaultdict(int)
+    diff_count3 = defaultdict(int)
     for q in selected:
-        diff_count[q.get("difficulty", "medium")] += 1
+        diff_count[diff_tier(q)] += 1
+        diff_count3[q.get("difficulty", "medium")] += 1
     return {
         "tier": name,
         "budget_min": budget_min,
@@ -168,7 +199,8 @@ def finalize(selected, name, budget_min, total_sec, concurrency=CONCURRENCY, end
         "est_wall_min": total_sec / (concurrency * EFF) / 60,
         "items": selected,
         "n": len(selected),
-        "diff_count": dict(diff_count),
+        "diff_count": {t: diff_count.get(t, 0) for t in DIFF_TIERS},   # 五档(小白…极难)
+        "diff_count_raw": dict(diff_count3),                            # 题库原始三档
     }
 
 # ============ 评分器 ============
@@ -1359,6 +1391,7 @@ async def run_tier(qs, tier_cfg, endpoints, concurrency=CONCURRENCY, judge_endpo
         st = ep_state[ep["name"]]
         if st["tripped"]:
             return {"qid": q["id"], "benchmark": q["benchmark"], "difficulty": q["difficulty"],
+                    "diff_tier": diff_tier(q),   # 五档难度(小白/简单/中等/困难/极难)
                     "domain": q["domain"], "endpoint": ep["name"], "score": None,
                     "output": "", "reasoning": "", "tool_calls": "",
                     "latency": 0, "error": f"endpoint_quarantined (连续{EP_FAIL_LIMIT}次失败后熔断)",
@@ -1367,6 +1400,7 @@ async def run_tier(qs, tier_cfg, endpoints, concurrency=CONCURRENCY, judge_endpo
         async with epsems[ep["name"]]:
             if cancel_flag and cancel_flag.is_set():
                 return {"qid": q["id"], "benchmark": q["benchmark"], "difficulty": q["difficulty"],
+                        "diff_tier": diff_tier(q),   # 五档难度(小白/简单/中等/困难/极难)
                         "domain": q["domain"], "endpoint": ep["name"], "score": None,
                         "output": "", "reasoning": "", "tool_calls": "",
                         "latency": 0, "error": "cancelled", "answer": q.get("answer"),
@@ -1395,6 +1429,7 @@ async def run_tier(qs, tier_cfg, endpoints, concurrency=CONCURRENCY, judge_endpo
                         if on_per_ep:
                             on_per_ep(ep["name"], ep_done[ep["name"]], total_n)
                     return {"qid": q["id"], "benchmark": q["benchmark"], "difficulty": q["difficulty"],
+                            "diff_tier": diff_tier(q),   # 五档难度(小白/简单/中等/困难/极难)
                             "domain": q["domain"], "endpoint": ep["name"], "score": r["score"],
                             "output": r["output"][:4000], "reasoning": "", "tool_calls": json.dumps(r["tool_calls"], ensure_ascii=False)[:3000],
                             "latency": r["latency"], "error": err, "answer": q.get("answer"), "judge": q["judge"],
@@ -1506,6 +1541,7 @@ async def run_tier(qs, tier_cfg, endpoints, concurrency=CONCURRENCY, judge_endpo
                     if on_per_ep:
                         on_per_ep(ep["name"], ep_done[ep["name"]], total_n)
                 return {"qid": q["id"], "benchmark": q["benchmark"], "difficulty": q["difficulty"],
+                        "diff_tier": diff_tier(q),   # 五档难度(小白/简单/中等/困难/极难)
                         "domain": q["domain"], "endpoint": ep["name"], "score": score,
                         "output": (resp.get("content") or "")[:4000],
                         "reasoning": (resp.get("reasoning") or "")[:4000],
