@@ -1,0 +1,22 @@
+# 统一行尾, 避免不同平台 clone 后脚本无法执行:
+#   - shell / python / 前端 / 数据: 一律 LF
+#   - Windows 批处理: CRLF(部分 cmd 语法对行尾敏感)
+* text=auto eol=lf
+*.sh    text eol=lf
+*.py    text eol=lf
+*.html  text eol=lf
+*.js    text eol=lf
+*.md    text eol=lf
+*.txt   text eol=lf
+*.json  text eol=lf
+*.jsonl text eol=lf
+*.csv   text eol=lf
+*.bat   text eol=crlf
+*.cmd   text eol=crlf
+
+# 二进制(避免被当成文本做行尾转换)
+*.png binary
+*.jpg binary
+*.ico binary
+*.woff binary
+*.woff2 binary

@@ -1,0 +1,1825 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>梦客AI工具箱-推理质量测试</title>
+<style>
+:root{
+  --bg:#07100f; --panel:#0d1715; --panel-2:#111d1a; --panel-3:#15231f;
+  --line:#a2c6ba24; --line-strong:#a2c6ba3d;
+  --muted:#8aa09a; --muted-2:#5f746e; --text:#e8f2ef;
+  --accent:#53e6a5; --accent-2:#22b877; --cyan:#67dbe7; --amber:#f3c96b;
+  --red:#ff6f77; --violet:#aa8cff; --shadow:0 16px 50px #00000040;
+  color-scheme:dark;
+}
+:root{
+  --bg:#07100f; --panel:#0d1715; --panel-2:#111d1a; --panel-3:#15231f;
+  --line:#a2c6ba24; --line-strong:#a2c6ba3d;
+  --muted:#8aa09a; --muted-2:#5f746e; --text:#e8f2ef;
+  --accent:#53e6a5; --accent-2:#22b877; --cyan:#67dbe7; --amber:#f3c96b;
+  --red:#ff6f77; --violet:#aa8cff; --shadow:0 16px 50px #00000040;
+  /* 状态色（通过 / 失败 / 错误 / 未测） */
+  --ok:#4ade80; --fail:#ff6f77; --err:#f0a030; --run:#60a5fa;
+  --pend:#9aa3a0; --skip:#6b746f;
+  --ref-info:#1c82ad; --ref-primary:#00337c; --ref-border:#a2c6ba24; --ref-bg:#f9fcff;
+  color-scheme:dark;
+}
+[data-theme="light"]{
+  /* 浅色主题色板 */
+  --bg:#f9fcff; --panel:#ffffff; --panel-2:#f4f9ff; --panel-3:#eaf3fa;
+  --line:rgba(28,130,173,0.25); --line-strong:rgba(28,130,173,0.4);
+  --muted:#4a6b8a; --muted-2:#8aa3bc; --text:#13005a;
+  --accent:#1c82ad; --accent-2:#00337c; --cyan:#0e6ca0; --amber:#c08427;
+  --red:#e06060; --violet:#7c3aed; --shadow:0 10px 30px rgba(19,0,90,0.08);
+  --ok:#5cb85c; --fail:#e06060; --err:#f0a030; --run:#2563eb;
+  --pend:#666666; --skip:#999999;
+  --ref-info:#1c82ad; --ref-primary:#00337c; --ref-border:rgba(28,130,173,0.25); --ref-bg:#f9fcff;
+  color-scheme:light;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+html,body{background:var(--bg);color:var(--text);font-family:Microsoft YaHei UI,'Segoe UI',sans-serif;font-size:14px;min-height:100%;max-width:100vw;overflow-x:hidden}
+body{padding:14px 16px 40px}
+h1{font-size:18px;font-weight:700;letter-spacing:.5px;display:flex;align-items:center;gap:12px;flex-wrap:wrap}
+h2{font-size:14px;font-weight:600;margin-bottom:10px;display:flex;align-items:center;gap:8px}
+.sub{color:var(--muted);font-size:12px}
+.card{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:14px 16px;margin-bottom:14px;box-shadow:var(--shadow);min-width:0;max-width:100%}
+.grid2{display:grid;grid-template-columns:minmax(0,1fr);gap:14px;align-items:start} /* 单列(2026-09-14 按用户要求去掉左右两列) */
+@media(max-width:1100px){.grid2{grid-template-columns:minmax(0,1fr)}}
+label{display:block;color:var(--muted);font-size:12px;margin:10px 0 4px}
+input,select,button,textarea{font-family:inherit;font-size:13px}
+input[type=text],input[type=number],select,textarea{width:100%;background:var(--panel-2);border:1px solid var(--line);border-radius:8px;color:var(--text);padding:7px 10px;outline:none}
+input:focus,select:focus,textarea:focus{border-color:var(--accent-2)}
+button{background:var(--panel-3);border:1px solid var(--line-strong);color:var(--text);border-radius:8px;padding:8px 14px;cursor:pointer;transition:.15s}
+button:hover{border-color:var(--accent-2)}
+button.primary{background:var(--accent-2);border-color:var(--accent-2);color:#fff;font-weight:700}
+[data-theme="light"] button.primary{background:var(--ref-primary);border-color:var(--ref-primary);color:#fff}
+button.primary:disabled{opacity:.55}
+button.primary:hover:not(:disabled){filter:brightness(1.18)}
+button.danger{color:var(--red);border-color:#ff6f7755}
+button.danger:hover{border-color:var(--red)}
+button:disabled{opacity:.45;cursor:not-allowed}
+.row{display:flex;gap:10px;align-items:center;flex-wrap:wrap}
+.chips{display:flex;flex-wrap:wrap;gap:6px}
+.chip{background:var(--panel-3);border:1px solid var(--line);border-radius:20px;padding:3px 10px;font-size:12px;color:var(--muted)}
+.chip b{color:var(--text);font-weight:600}
+.chip.click{cursor:pointer}
+.chip.click:hover{border-color:var(--accent-2)}
+.chip.on{background:var(--accent-2);border-color:var(--accent-2);color:#04120b}
+.chip.on b{color:#04120b}
+table{width:100%;border-collapse:collapse;font-size:12.5px}
+th{color:var(--muted-2);font-weight:600;text-align:left;padding:6px 8px;border-bottom:1px solid var(--line-strong);white-space:nowrap}
+td{padding:5px 8px;border-bottom:1px solid var(--line);vertical-align:top}
+tr:hover td{background:var(--panel-2)}
+.progress-wrap{background:var(--panel-2);border:1px solid var(--line);border-radius:8px;height:10px;overflow:hidden;margin-top:6px}
+.progress-bar{height:100%;background:linear-gradient(90deg,var(--accent-2),var(--accent));width:0%;transition:width .4s}
+.status-pill{padding:3px 10px;border-radius:20px;font-size:12px;border:1px solid var(--line-strong)}
+.status-idle{color:var(--muted)}
+.status-run{color:var(--accent);border-color:var(--accent)}
+.status-done{color:var(--cyan);border-color:var(--cyan)}
+.status-err{color:var(--red);border-color:var(--red)}
+.endpoint-row{display:grid;grid-template-columns:1fr 1.2fr 1fr .8fr auto;gap:6px;margin-bottom:6px;align-items:center}
+.endpoint-row .ck{display:flex;align-items:center;gap:4px;color:var(--muted);font-size:12px;white-space:nowrap}
+.endpoint-row .ep-ops{display:flex;align-items:center;gap:6px;justify-content:flex-end}
+.heatmap-wrap{overflow:auto;max-height:560px;border:1px solid var(--line);border-radius:8px}
+.heatmap-wrap table{white-space:nowrap}
+.heatmap-wrap th,.heatmap-wrap td{padding:3px 6px;text-align:center}
+.heatmap-wrap td.cell{cursor:pointer;border:1px solid #00000030;min-width:56px;height:26px;color:#062018;font-weight:700}
+.heatmap-wrap td.cell:hover{outline:2px solid var(--cyan)}
+.score-good{background:#53e6a5}.score-mid{background:#f3c96b}.score-low{background:#ff9d66}.score-bad{background:#ff6f77}.score-err{background:#8a3033;color:#ffd6d8!important}.score-none{background:#223029;color:var(--muted-2)!important}
+[data-theme="light"] .score-good{background:#7ecf8a}
+[data-theme="light"] .score-mid{background:#f0d27a}
+[data-theme="light"] .score-low{background:#f4b26a}
+[data-theme="light"] .score-bad{background:#e06060;color:#fff!important}
+[data-theme="light"] .score-err{background:#f0a030;color:#fff!important}
+[data-theme="light"] .score-none{background:#e9f1f9}
+.stat-cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:10px}
+/* 结果统计: 「按领域 / 按难度」明细表独立成块(不能放进 .stat-cards 网格, 否则会和
+   统计卡片挤在同一行网格里, 宽表格溢出单元格 → 两块内容互相重叠) */
+.stat-tables{display:block;margin-top:12px}
+.stat-tables .tbl-sec{margin-top:10px;padding-top:8px;border-top:1px dashed var(--line);overflow-x:auto}
+.stat-tables .tbl-sec:first-child{margin-top:0;padding-top:0;border-top:none}
+.stat-tables .tbl-title{font-size:12px;color:var(--muted);margin:0 0 6px}
+.stat-tables table{min-width:min(100%,360px)}
+.stat-card{background:var(--panel-2);border:1px solid var(--line);border-radius:10px;padding:10px 12px}
+.stat-card .big{font-size:22px;font-weight:700;margin:2px 0}
+.stat-card .lbl{color:var(--muted);font-size:12px}
+.stat-card .sub{margin-top:4px}
+.drawer{position:fixed;top:0;right:-560px;width:540px;max-width:96vw;height:100vh;background:var(--panel);border-left:1px solid var(--line-strong);box-shadow:-20px 0 60px #00000080;transition:right .25s;z-index:50;overflow-y:auto;padding:18px 20px}
+.drawer.open{right:0}
+.drawer h3{font-size:15px;margin-bottom:4px}
+.drawer .close{float:right}
+.drawer pre{background:var(--panel-2);border:1px solid var(--line);border-radius:8px;padding:10px;font-family:Consolas,monospace;font-size:12px;white-space:pre-wrap;word-break:break-word;max-height:300px;overflow:auto}
+.mono{font-family:Consolas,monospace;font-size:12px;color:var(--muted)}
+.verbose{color:var(--amber)}
+.err-text{color:var(--red)}
+.empty{color:var(--muted-2);text-align:center;padding:26px 0}
+.pager{display:flex;gap:8px;justify-content:center;margin-top:10px}
+.muted{color:var(--muted)}
+.toggle{display:inline-flex;align-items:center;gap:6px;color:var(--muted);font-size:12px;margin-left:8px}
+.spin{display:inline-block;width:14px;height:14px;border:2px solid var(--line-strong);border-top-color:var(--accent);border-radius:50%;animation:sp 1s linear infinite;vertical-align:-2px}
+@keyframes sp{to{transform:rotate(360deg)}}
+
+/* ---------- 新增：主题按钮 ---------- */
+#themeBtn{padding:5px 12px;font-size:13px}
+
+/* ---------- 新增：每端点进度 ---------- */
+.ep-prog{margin-top:10px}
+.ep-prog .ep-line{display:grid;grid-template-columns:110px 1fr 90px;gap:8px;align-items:center;margin-bottom:6px;font-size:12px}
+.ep-prog .ep-name{color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.ep-prog .ep-bar{height:8px;background:var(--panel-2);border:1px solid var(--line);border-radius:6px;overflow:hidden}
+.ep-prog .ep-fill{height:100%;background:linear-gradient(90deg,var(--cyan),var(--accent));width:0%;transition:width .4s}
+.ep-prog .ep-num{color:var(--muted);text-align:right;white-space:nowrap}
+
+/* ---------- 新增：停止横幅 ---------- */
+.banner{display:flex;align-items:center;gap:8px;border-radius:8px;padding:8px 12px;margin-bottom:10px;font-size:13px}
+.banner.warn{background:var(--amber);color:#3a2c00;border:1px solid var(--amber)}
+[data-theme="light"] .banner.warn{background:#fff3d6;color:#6b4e00}
+.banner.info{background:var(--accent-2);color:#04120b;border:1px solid var(--accent-2)}
+
+/* ---------- 新增：题库浏览 ---------- */
+.browse{display:grid;grid-template-columns:minmax(0,1fr);gap:14px} /* 单列(2026-09-14) */
+@media(max-width:1100px){.browse{grid-template-columns:minmax(0,1fr)}}
+.browse-left{background:var(--panel-2);border:1px solid var(--line);border-radius:10px;padding:10px 12px;max-height:640px;overflow:auto}
+.browse-left .bdom{background:var(--panel-3);border:1px solid var(--line);border-radius:8px;margin-bottom:8px;padding:8px 10px;cursor:pointer}
+.browse-left .bdom:hover{border-color:var(--accent-2)}
+.browse-left .bdom.on{border-color:var(--accent-2);background:var(--panel)}
+.browse-left .bdom-head{display:flex;justify-content:space-between;align-items:center;font-size:13px;font-weight:700}
+.browse-left .bdom-head .n{font-size:11px;color:var(--muted);font-weight:400}
+.browse-left .bchips{display:flex;flex-wrap:wrap;gap:4px;margin-top:6px}
+.browse-left .bchip{font-size:11px;padding:2px 8px;border-radius:14px;border:1px solid var(--line);color:var(--muted);cursor:pointer;background:var(--panel-2)}
+.browse-left .bchip:hover{border-color:var(--accent-2)}
+.browse-left .bchip.on{background:var(--accent-2);color:#04120b;border-color:var(--accent-2)}
+.browse-right{overflow:auto;max-height:640px}
+.browse-tools{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:8px}
+.browse-tools input{width:220px;padding:5px 8px}
+.tier-badge{display:inline-block;font-size:10px;padding:1px 6px;border-radius:8px;margin:0 2px 2px 0;border:1px solid var(--line-strong);color:var(--muted)}
+.tier-badge.on{background:var(--violet);border-color:var(--violet);color:#fff}
+.diff-badge{display:inline-block;font-size:10px;padding:1px 6px;border-radius:8px}
+.diff-easy{background:#1aa87333;color:var(--accent)}
+.diff-medium{background:#f3c96b33;color:var(--amber)}
+.diff-hard{background:#ff6f7733;color:var(--red)}
+.qrow{cursor:pointer}
+.qrow td.qid{font-family:Consolas,monospace}
+.qrow:hover td{background:var(--panel-2)!important}
+
+/* ---------- 新增：图表 ---------- */
+.chart-sec{margin-top:14px}
+.chart-sec h3{font-size:13px;color:var(--muted);margin-bottom:8px}
+.bars{display:flex;flex-direction:column;gap:6px}
+.bar-line{display:grid;grid-template-columns:170px 1fr 70px;gap:8px;align-items:center;font-size:12px}
+.bar-line .bl-name{color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.bar-line .bl-track{background:var(--panel-2);border:1px solid var(--line);border-radius:6px;height:14px;overflow:hidden;display:flex}
+.bar-line .bl-seg{height:100%}
+.bar-line .bl-num{color:var(--muted);text-align:right;white-space:nowrap}
+.vbars{display:flex;gap:6px;align-items:flex-end;min-height:120px;overflow-x:auto;padding-bottom:4px}
+.vbar{display:flex;flex-direction:column;align-items:center;gap:3px;min-width:52px}
+.vbar .vb-stack{display:flex;gap:2px;align-items:flex-end;height:90px}
+.vbar .vb-seg{width:14px;border-radius:3px 3px 0 0}
+.vbar .vb-lbl{font-size:10px;color:var(--muted);max-width:52px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.vbar .vb-val{font-size:10px;color:var(--muted)}
+.hist{display:flex;gap:4px;align-items:flex-end;min-height:120px;overflow-x:auto;padding-bottom:4px}
+.hist .hb{display:flex;flex-direction:column;align-items:center;gap:3px;min-width:44px}
+.hist .hb .hstack{display:flex;gap:2px;align-items:flex-end;height:90px}
+.hist .hb .hseg{width:14px;border-radius:3px 3px 0 0}
+.hist .hb .hlbl{font-size:10px;color:var(--muted)}
+
+/* ============ 通用 UI 组件 ============ */
+/* 六态状态徽章（pass/fail/error/running/pending/skipped） */
+.badge{display:inline-flex;align-items:center;gap:4px;font-size:11px;font-weight:700;padding:2px 8px;border-radius:20px;white-space:nowrap;line-height:1.4}
+.badge::before{content:"";width:6px;height:6px;border-radius:50%;background:currentColor;flex:none}
+.badge-pass{background:rgba(92,184,92,.15);color:var(--ok)}
+.badge-fail{background:rgba(224,96,96,.15);color:var(--fail)}
+.badge-part{background:rgba(243,201,107,.2);color:var(--amber)}
+.badge-err{background:rgba(240,160,48,.15);color:var(--err)}
+.badge-run{background:rgba(59,130,246,.12);color:var(--run);animation:pulse-blue 1.5s infinite}
+.badge-pend{background:var(--panel-3);color:var(--pend)}
+.badge-skip{background:var(--panel-2);color:var(--skip);border:1px dashed var(--line-strong)}
+/* 参考页 pulse-blue = box-shadow 扩散(不是透明度忽闪); 且格子状态用命令式 patch(不整表重建),
+   进行中动画不会随每 3s 轮询重启 → 消除用户看到的「闪烁」 */
+@keyframes pulse-blue{0%{box-shadow:0 0 0 0 rgba(37,99,235,.4)}70%{box-shadow:0 0 0 6px rgba(37,99,235,0)}100%{box-shadow:0 0 0 0 rgba(37,99,235,0)}}
+/* 参考页失败/错误单元格: 粉红/深红、橙 对角斜纹（提升可读性） */
+.fail-diag{background-image:repeating-linear-gradient(45deg,rgba(224,96,96,.82) 0 5px,rgba(250,200,205,.85) 5px 10px)}
+.err-diag{background-image:repeating-linear-gradient(45deg,rgba(240,160,48,.82) 0 5px,rgba(252,224,178,.85) 5px 10px)}
+/* 参考页 panel 头（淡蓝底 + 下边框） */
+.refh{background:rgba(28,130,173,.05);border:1px solid var(--line);border-bottom:none;border-radius:10px 10px 0 0;padding:10px 14px;margin:0}
+/* 题目卡（参考 question-card: hover 蓝边 + 位移, active 主色框） */
+.qcard{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:10px 12px;cursor:pointer;transition:all .2s ease}
+.qcard:hover{border-color:var(--ref-info);transform:translateX(2px)}
+.qcard.active{border-color:var(--ref-primary);box-shadow:0 0 10px rgba(0,51,124,.10)}
+.qcard .qid{font-family:Consolas,Menlo,monospace;font-weight:700;color:var(--muted);font-size:12px}
+/* 深色 trace 面板（参考 inspector 对话 trace: 近黑底 + 浅灰 mono） */
+.trace-dark{background:#060609;color:#d1d5db;font-family:Consolas,Menlo,monospace;font-size:12px;border-radius:8px;padding:10px 12px;margin-top:4px;white-space:pre-wrap;word-break:break-word;border:1px solid #1f2937}
+[data-theme="light"] .trace-dark{background:#0b0d12;box-shadow:inset 0 0 0 1px #262b36}
+/* 实时测试表现面板 */
+.live-row{display:flex;align-items:center;gap:8px;padding:6px 8px;border-bottom:1px solid var(--line);font-size:12.5px;cursor:pointer;transition:background .15s}
+.live-row:hover{background:var(--panel-2)}
+.live-row .lv-qid{font-family:Consolas,Menlo,monospace;font-weight:700;color:var(--muted);font-size:12px;min-width:120px;max-width:220px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.live-row .lv-bm{color:var(--muted);font-size:11.5px;max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.live-row .lv-ep{font-family:Consolas,Menlo,monospace;font-size:11.5px;margin-left:auto}
+.live-row .lv-score{font-weight:700;min-width:52px;text-align:right}
+.live-row.new{animation:live-flash 1.8s ease-out}
+@keyframes live-flash{0%{background:rgba(37,99,235,.18)}100%{background:transparent}}
+.live-head{display:flex;align-items:center;gap:10px;flex-wrap:wrap;padding:8px 10px;border-bottom:1px solid var(--line-strong);background:rgba(28,130,173,.04)}
+.live-bar{height:8px;border-radius:6px;background:var(--panel-2);border:1px solid var(--line);overflow:hidden;min-width:180px;flex:1}
+.live-bar>div{height:100%;background:linear-gradient(90deg,var(--ref-primary),var(--ref-info));transition:width .4s}
+.live-panel{max-height:420px;overflow-y:auto}
+.live-panel::-webkit-scrollbar{width:8px}
+.live-panel::-webkit-scrollbar-thumb{background:var(--line-strong);border-radius:4px}
+
+/* ---------- 格子矩阵热力图 ---------- */
+/* 矩阵热力图: 每轮×(端点) 一行分组, 每行(分组)最多 20 格, 超出自动换到下一行显示。
+   列数由 JS 写内联样式 grid-template-columns:repeat(N,var(--mx-size)) 决定(N=min(20,题数)),
+   格宽用 --mx-size 变量控制, 窄屏媒体查询只改变量即可。
+   2026-09-17 按用户要求:
+   - 格子 2 倍大(19px → 38px);
+   - 题号写在**每个格子内部**(不再用单独的表头行, 题号永远跟着自己的格子, 也不会挤在一起);
+   - 端点名/测试名完整显示, 不换行、不截断, 字体加大, 横向滚动时左侧标签吸附可见;
+   - 部分得分(0.1~0.9)直接显示在格子里 → 主观题评分不再是「0 或 1」。 */
+.mx-round{display:flex;align-items:flex-start;gap:8px;margin:8px 0}
+.mx-rlab{flex:0 0 auto;min-width:110px;font-size:13px;font-weight:700;color:var(--text);line-height:1.3;
+  text-align:right;padding:10px 2px 0 0;white-space:nowrap;
+  position:sticky;left:0;z-index:3;background:var(--panel)}
+.mx-rlab .mx-cnt{font-weight:600;color:var(--muted);font-size:12px}
+.mx-cells{--mx-size:38px;display:grid;grid-template-columns:repeat(20,var(--mx-size));grid-auto-rows:var(--mx-size);gap:6px;min-width:0}
+.matrix-cell{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:1px;
+  width:var(--mx-size,38px);height:var(--mx-size,38px);flex:0 0 auto;cursor:pointer;
+  border-radius:4px;border:1px solid var(--ref-border);overflow:hidden;
+  font-size:10px;line-height:1.05;font-weight:600}
+.matrix-cell .qx{font-size:10px;font-weight:600;letter-spacing:-.2px}
+.matrix-cell .sc{font-size:11px;font-weight:800}
+.matrix-cell.pass{background:var(--ok)!important;color:#fff!important;text-shadow:0 1px 1px rgba(0,0,0,.28)}
+.matrix-cell.fail{background:linear-gradient(135deg,#e06060 50%,#f8baba 50%)!important;color:#fff!important;text-shadow:0 1px 1px rgba(0,0,0,.28)}
+.matrix-cell.error{background:var(--err)!important;color:#fff!important;text-shadow:0 1px 1px rgba(0,0,0,.28)}
+.matrix-cell.running{background:var(--run)!important;color:#fff!important;text-shadow:0 1px 1px rgba(0,0,0,.28);animation:pulse-blue 1.5s infinite}
+/* 浅蓝「也在跑」: 紧挨蓝格的并发在途格(并发数>1 时才出现) */
+.matrix-cell.queued{background:rgba(37,99,235,.18)!important;border:1px solid rgba(37,99,235,.55)!important;color:#93b4f5!important;cursor:default}
+.matrix-cell.pending{background:var(--panel-2)!important;color:var(--muted)}
+.matrix-cell.pending:hover{background:var(--panel)!important}
+.matrix-cell.none{background:#d4a017!important;color:#fff!important;text-shadow:0 1px 1px rgba(0,0,0,.28)}
+.matrix-cell.none:hover{background:#e8b62c!important}
+/* 部分得分(0 < 分数 < 1): 主观题/多轮工具题的 0.1~0.9 单独一色, 格内还写着小数 */
+.matrix-cell.part{background:linear-gradient(135deg,#f0b429 50%,#f8dc9a 50%)!important;color:#3a2600!important}
+.matrix-cell.part:hover{background:linear-gradient(135deg,#f7c245 50%,#fbe7b4 50%)!important}
+.matrix-cell:hover{outline:2px solid var(--ref-primary);outline-offset:1px;position:relative;z-index:2}
+.cell.score-run{background:var(--run)!important;color:#fff!important;animation:pulse-blue 1.5s infinite}
+.matrix-legend{display:flex;gap:14px;flex-wrap:wrap;font-size:11px;color:var(--text-muted);margin-bottom:8px;align-items:center}
+.matrix-legend .cell{width:14px;height:14px;display:inline-block;vertical-align:-2px;margin-right:4px;border:1px solid var(--ref-border);border-radius:2px}
+.tscroll{overflow-x:auto;border-radius:8px}
+@media(max-width:640px){
+  .mx-cells{--mx-size:26px;gap:4px}
+  .matrix-cell{font-size:8px}
+  .matrix-cell .qx{font-size:8px}
+  .matrix-cell .sc{font-size:9px}
+  .mx-rlab{font-size:12px;min-width:80px;padding-top:6px}
+}
+.hist-del{background:none;border:none;cursor:pointer;font-size:14px;padding:2px 6px;opacity:.65}
+.hist-del:hover{opacity:1;transform:scale(1.15)}
+.hist-resume{background:rgba(59,130,246,.1);border:1px solid var(--run);color:var(--run);cursor:pointer;font-size:12px;padding:3px 10px;border-radius:6px}
+.hist-resume:hover{background:var(--run);color:#fff}
+.hist-item{display:flex;flex-wrap:wrap;gap:4px 8px;align-items:center;padding:8px 10px;border:1px solid var(--line);border-radius:8px;margin-bottom:8px;background:var(--panel);font-size:12px}
+.hist-id{font-weight:700;white-space:nowrap}
+.hist-chip{white-space:nowrap}
+.hist-eps{flex:1 1 100%;min-width:0;color:var(--muted);font-family:Consolas,monospace;word-break:break-all;line-height:1.5}
+.hist-time{white-space:nowrap;color:var(--muted)}
+.hist-ops{margin-left:auto;display:flex;gap:6px;flex-wrap:wrap;align-items:center}
+/* ---------- inspector 答案对比 ---------- */
+.cmp-item{border:1px solid var(--line);border-radius:10px;padding:10px 12px;margin:8px 0;background:var(--panel-2)}
+.cmp-item.cmp-ok{border-color:var(--ok);box-shadow:inset 3px 0 0 var(--ok)}
+.cmp-item.cmp-part{border-color:var(--amber);box-shadow:inset 3px 0 0 var(--amber)}
+.cmp-item.cmp-bad{border-color:var(--fail);box-shadow:inset 3px 0 0 var(--fail)}
+.cmp-head{display:flex;gap:8px;align-items:center;font-size:13px;margin-bottom:6px}
+.cmp-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+@media(max-width:900px){.cmp-grid{grid-template-columns:1fr}}
+.cmp-lab{font-size:11px;font-weight:700;color:var(--muted);margin-bottom:3px}
+.cmp-grid pre{margin:0;max-height:260px;overflow:auto;white-space:pre-wrap;word-break:break-word;font-size:12px}
+</style>
+</head>
+<body>
+<h1>🧪 梦客AI工具箱-推理质量测试
+  <span id="statusPill" class="status-pill status-idle">空闲</span>
+  <button id="themeBtn" title="切换浅色/深色主题">🌙 深色</button>
+</h1>
+<p class="sub" style="margin:4px 0 6px">权威基准题库 × 10 档测试强度 · 多端点并行评测 · 点击热力图/题目查看详情与所属档位</p>
+<p class="sub" style="margin:0 0 14px;font-weight:600;color:var(--accent)">欢迎加QQ群1028429001，讨论本地部署deepseek-v4.1的相关方案！</p>
+
+<!-- 题库元数据: 放在标题下方(用户要求置顶) -->
+<div class="card">
+  <h2>📚 题库元数据 <button style="margin-left:auto;padding:4px 10px" id="refreshMeta">↻</button></h2>
+  <div id="metaBox" class="sub">加载中…</div>
+</div>
+
+<div class="grid2">
+  <!-- 左列: 配置 -->
+  <div>
+    <div class="card">
+      <h2>⚙️ 评测配置</h2>
+      <label>测试档位</label>
+      <select id="tier"></select>
+      <div class="muted" style="font-size:12px;margin-top:4px" id="tierInfo">加载中…</div>
+
+      <label>被测端点（OpenAI 兼容，base_url 不含 /v1）<span class="muted" style="font-weight:400"> · 测试名称留空 = 默认显示模型名称</span></label>
+      <div id="endpoints"></div>
+      <div class="row" style="margin-top:6px">
+        <button id="addEp">＋ 添加端点</button>
+        <button id="autoEp" title="从部署环境的推理状态接口(/api/snapshot)读取正在运行的推理服务并自动生成端点；接口为空时请在下方手动填写">🔄 自动获取运行中推理</button>
+        <button id="resetEp">恢复默认</button>
+      </div>
+
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
+        <div>
+          <label>并发数（每端点，建议 ≤4）</label>
+          <input type="number" id="concurrency" value="2" title="并发=同时处理的题目数(不设上限, 多大都能生效)">
+        </div>
+        <div>
+          <label>题数上限（调试，0=全部）</label>
+          <input type="number" id="sampleN" value="0">
+        </div>
+      </div>
+
+      <div style="margin-top:12px;border-top:1px dashed var(--line);padding-top:10px">
+        <div class="muted" style="font-size:12px;margin-bottom:6px">🧪 高级参数 <span class="muted-2">（并发/采样/超时等可选调参）</span></div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
+          <div>
+            <label>测试轮数 Rounds（每轮=整组题重测一遍）</label>
+            <input type="number" id="rounds" value="1">
+          </div>
+          <div>
+            <label>Max Tokens（生成长度）</label>
+            <input type="number" id="maxTokens" value="2048">
+          </div>
+          <div>
+            <label>Temperature（温度）</label>
+            <input type="number" id="temperature" value="0.1" step="0.1">
+          </div>
+          <div>
+            <label>单个测试超时（秒）</label>
+            <input type="number" id="qTimeout" value="300">
+          </div>
+          <div>
+            <label>最大重试次数</label>
+            <input type="number" id="retries" value="2">
+          </div>
+          <div>
+            <label>难度过滤</label>
+            <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+              <label class="ck"><input type="checkbox" class="diff-sel" value="easy" checked> 易</label>
+              <label class="ck"><input type="checkbox" class="diff-sel" value="medium" checked> 中</label>
+              <label class="ck"><input type="checkbox" class="diff-sel" value="hard" checked> 难</label>
+              <button type="button" id="diffAll" style="padding:2px 8px;font-size:11px">全选</button>
+              <button type="button" id="diffNone" style="padding:2px 8px;font-size:11px">全不选</button>
+            </div>
+          </div>
+        </div>
+        <div class="muted" style="font-size:11px;margin-top:6px">
+          💡 评测在服务器后台运行：刷新/关闭页面都不会中断，重新打开自动续看进度；「测试轮数 &gt;1」时格子热力图每行=一轮。
+        </div>
+      </div>
+
+      <label style="margin-top:14px" id="judgeTgl">
+        <input type="checkbox" id="judgeEnabled"> 启用主观题 LLM-Judge（1-10 分）
+      </label>
+      <div id="judgeBox" style="display:none">
+        <label>Judge 端点 base_url</label>
+        <input type="text" id="judgeBase" value="http://127.0.0.1:8000" placeholder="http://host:port">
+        <label>Judge 模型</label>
+        <input type="text" id="judgeModel" value="" placeholder="judge-model-name">
+      </div>
+
+      <div class="row" style="margin-top:16px">
+        <button class="primary" id="runBtn"><span style="font-weight:900">✚</span> 新测试</button>
+        <button id="resumeMainBtn" disabled title="从历史继续一条未完成的运行（自动跳过已完成题轮，只测剩余部分）">⏯ 断点续测</button>
+        <button class="danger" id="cancelBtn" disabled>⏹ 停止</button>
+      </div>
+      <div id="progressWrap" class="progress-wrap" style="display:none"><div class="progress-bar" id="progressBar"></div></div>
+      <div class="muted" style="font-size:12px;margin-top:6px" id="progressText"></div>
+      <div class="ep-prog" id="epProg"></div>
+    </div>
+
+    <div class="card">
+      <h2>🕘 历史运行
+        <button id="clearHistAll" style="margin-left:auto;padding:4px 10px" title="删除列表中全部历史记录并清空结果缓存（运行中的评测会被保留）">🗑 全部删除</button>
+      </h2>
+      <div id="historyBox" class="sub">加载中…</div>
+    </div>
+  </div>
+
+  <!-- 右列: 结果 -->
+  <div>
+    <div class="card" id="statsCard" style="display:none">
+      <h2>📊 结果统计</h2>
+      <div id="resBanner"></div>
+      <div class="stat-cards" id="statCards"></div>
+      <div class="stat-tables" id="statTables"></div>
+      <div style="display:flex;gap:10px;margin-top:12px">
+        <button id="exportCsv">⬇ 导出 CSV</button>
+        <button id="exportJson">⬇ 导出 JSON</button>
+      </div>
+    </div>
+
+    <div class="card" id="chartCard" style="display:none">
+      <h2>📈 图形化结果</h2>
+      <div id="chartBox"></div>
+    </div>
+
+    <div class="card">
+      <h2>🔥 热力图 <span class="badge badge-run" id="hmLiveTag" style="display:none;margin-left:8px">⚡ 实时</span></h2>
+      <div class="row" style="margin-bottom:10px">
+        <label style="margin:0">模式</label>
+        <select id="hmMode" style="width:auto">
+          <option value="m" selected>格子矩阵(参考样式)</option>
+          <option value="q">按题目</option>
+          <option value="bm">按 Benchmark 聚合</option>
+        </select>
+        <label style="margin:0">领域</label>
+        <select id="hmDomain" style="width:auto"><option value="">全部</option></select>
+        <label style="margin:0">难度</label>
+        <select id="hmDiff" style="width:auto"><option value="">全部</option><option value="easy">easy</option><option value="medium">medium</option><option value="hard">hard</option></select>
+        <input type="text" id="hmSearch" placeholder="搜索 benchmark/qid…" style="width:220px;margin-left:auto">
+        <button id="hmReset" style="padding:4px 10px">重置</button>
+      </div>
+      <div id="heatmapBox" class="empty">暂无数据 · 请先运行评测或从历史加载</div>
+    </div>
+
+    <!-- 实时测试表现（运行中自动刷新，热力图下方） -->
+    <div class="card" id="liveCard" style="display:none">
+      <h2 class="refh">🟢 实时测试表现
+        <span class="badge badge-run" id="liveState">启动中…</span>
+        <span class="sub" style="font-weight:400;margin-left:auto">测试进行中每 3 秒刷新 · 点击条目查看该题详情</span>
+      </h2>
+      <div id="liveBox"></div>
+    </div>
+  </div>
+</div>
+
+<!-- 题库浏览（领域 / 类别列表 + 题目展示区） -->
+<div class="card">
+  <h2>🗂 题库浏览
+    <span class="sub" style="font-weight:400">按领域/类别浏览全部题目 · 点击题目查看详情与所属档位（Tier）</span>
+    <button style="margin-left:auto;padding:4px 10px" id="browseRefresh">↻</button>
+  </h2>
+  <div class="browse">
+    <div class="browse-left" id="browseLeft"><div class="empty">加载中…</div></div>
+    <div class="browse-right" id="browseRight"><div class="empty">请选择左侧领域/类别</div></div>
+  </div>
+</div>
+
+<!-- 详情抽屉 -->
+<div class="drawer" id="drawer">
+  <button class="close" id="drawerClose">✕</button>
+  <div id="drawerBody"></div>
+</div>
+
+<script>
+"use strict";
+const $=s=>document.querySelector(s);
+const TIER_NAMES={T1:"10 分钟 · 快速抽查",T2:"30 分钟",T3:"1 小时",T4:"2 小时",T5:"3 小时",
+  T6:"4 小时",T7:"5 小时",T8:"6 小时",T9:"12 小时",T10:"不限时长",
+  SQL:"SQL 单独测试 · 25 题(DuckDB 参考题, SQLite 真实执行比对判分, 无需评委)"};
+const TIERS_ORDER=["T1","T2","T3","T4","T5","T6","T7","T8","T9","T10","SQL"];
+
+let META=null, RUN=null, RESULTS=null, RUNID=null, pollTimer=null;
+let RES_META={status:"", partial:false, total:0};
+let LIVE_PREV=new Set();
+/* 实时热力图: 运行中累积的条目(qid|ep|round -> 最新一条) + 是否处于实时模式 */
+let HM_ACC={}, HM_LIVE=false, QORDER={}, RUN_SK=null;
+/* 2026-09-14 显示模型:
+   - SKEL: 热力图骨架 {run_id, questions[], endpoints[], rounds, total_cells} —— 格子总数只由它决定
+   - CELLS: 已判定格子 `round|ep|qid` -> code(1 pass/2 fail/3 err/4 已答未评分)；单槽单状态、终态原地覆盖
+   - 进行中: 每行(轮次×端点)最多 1 格涂蓝(最早在途)，其余在途=浅蓝点「并行处理中」格 + 行标签 +N 在途；停止后绝不复活蓝格 */
+let SKEL=null, CELLS={}, SCORES={}, MATX_SIG="", MATR_CELL={}, RUNNING_CELLS=new Set(), QUEUE_CELLS=new Set(), LIVE_VISIBLE=new Set(), LANE_INFLIGHT={}, LIVE_SEQ=0;
+function resetHM(){HM_ACC={};HM_LIVE=false;QORDER={};SKEL=null;CELLS={};SCORES={};MATX_SIG="";MATR_CELL={};RUNNING_CELLS=new Set();QUEUE_CELLS=new Set();LIVE_VISIBLE=new Set();LANE_INFLIGHT={};LIVE_SEQ=0;RES_META.padCells=null;RUN_SK=null;}
+let BROWSE={items:[],all:[],page:0,per:120,search:"",tier:"",domain:"",benchmark:"",loading:false};
+const BROWSE_CACHE={};
+let HIST_CACHE={};
+const DEFAULTS=[
+  /* 首次打开时的示例端点: 请改成你自己的 OpenAI 兼容服务地址。
+     name 留空 = 直接显示模型名称(见 resolveEpNames)。 */
+  {name:"",base_url:"http://127.0.0.1:8000",model:"your-model-name",thinking:false},
+];
+/* 名称一律按「测试名称」展示: 留空或等于模型名时, 视为未自定义 → 显示模型名称。
+   若你从更早的版本升级、旧配置里存的是机器名, 想让这些名字也回退成模型名,
+   在浏览器控制台执行一次:
+     localStorage.setItem("quality_legacy_names", JSON.stringify(["旧名称1","旧名称2"])) */
+const LEGACY_AUTO_NAMES=new Set([...(function(){try{return JSON.parse(localStorage.getItem("quality_legacy_names")||"[]")}catch(e){return []}})(),"ep","endpoint"]);
+function epHost(u){try{return new URL(u).host}catch(e){return String(u||"").replace(/^https?:\/\//i,"").split("/")[0]}}
+function isAutoName(ep){
+  const n=String(ep&&ep.name||"").trim(),m=String(ep&&ep.model||"").trim();
+  return !n||(!!m&&n===m)||LEGACY_AUTO_NAMES.has(n);
+}
+/* 测试名称(=端点显示名): 手填的名称优先, 留空/未自定义时默认用「模型名称」;
+   多端点模型同名时补 @主机:端口 便于区分。 */
+function resolveEpNames(eps){
+  const out=(eps||[]).map(e=>({...e}));
+  const auto=out.map(e=>isAutoName(e));
+  const base=out.map((e,i)=>auto[i]?((e.model||"").trim()||epHost(e.base_url)||("endpoint-"+(i+1))):String(e.name).trim());
+  const cnt={};base.forEach(n=>cnt[n]=(cnt[n]||0)+1);
+  const seq={};
+  out.forEach((e,i)=>{
+    let n=base[i];
+    if(cnt[n]>1){const h=epHost(e.base_url);if(h)n+="@"+h}
+    if(seq[n]!=null){seq[n]+=1;n=n+"#"+seq[n]}else seq[n]=0;
+    e.name=n;e.nameAuto=auto[i];
+  });
+  return out;
+}
+
+async function api(path,opt){const r=await fetch(path,opt);if(!r.ok){let d="";try{d=await r.text()}catch(e){};throw new Error("HTTP "+r.status+" "+d.slice(0,200))}return r.json()}
+
+/* ================= 主题（浅色 / 深色） ================= */
+function applyTheme(){
+  const t=localStorage.getItem("quality_theme")||"light";
+  document.documentElement.dataset.theme=t;
+  $("#themeBtn").textContent=t==="light"?"🌙 深色":"☀️ 浅色";
+  const mc=document.querySelector('meta[name="theme-color"]');
+  if(mc)mc.setAttribute("content",t==="light"?"#f4f8f6":"#07110f");
+}
+$("#themeBtn")&&($("#themeBtn").onclick=()=>{
+  const t=(document.documentElement.dataset.theme==="light")?"dark":"light";
+  localStorage.setItem("quality_theme",t);applyTheme();
+});
+
+/* ---------- 配置 ---------- */
+function loadCfg(){try{return JSON.parse(localStorage.getItem("quality_cfg")||"null")}catch(e){return null}}
+function saveCfg(){
+  const eps=[...document.querySelectorAll("#endpoints .endpoint-row")].map(r=>({
+    name:r.querySelector(".ep-name").value.trim(),
+    base_url:r.querySelector(".ep-base").value.trim(),
+    model:r.querySelector(".ep-model").value.trim(),
+    thinking:r.querySelector(".ep-think").checked,
+    api_key:r.querySelector(".ep-key").value.trim()||null}));
+  localStorage.setItem("quality_cfg",JSON.stringify({eps,
+    tier:($("#tier")&&$("#tier").value)||"",
+    concurrency:+$("#concurrency").value||2, sampleN:+$("#sampleN").value||0,
+    rounds:+$("#rounds").value||1,
+    maxTokens:+$("#maxTokens").value||2048,
+    temperature:+$("#temperature").value??0.1,
+    qTimeout:+$("#qTimeout").value||300,
+    retries:+$("#retries").value||0,
+    diffSel:[...document.querySelectorAll(".diff-sel:checked")].map(e=>e.value),
+    judgeEnabled:$("#judgeEnabled").checked, judgeBase:$("#judgeBase").value, judgeModel:$("#judgeModel").value}));
+}
+function renderEndpoints(eps){
+  $("#endpoints").innerHTML="";
+  eps.forEach(ep=>$("#endpoints").appendChild(endpointRow(ep)));
+}
+/* ---------- 自动获取运行中的推理服务(可选扩展点 /api/snapshot) ----------
+   本工具默认不扫描任何集群; 若你的部署环境能提供推理实例清单, 实现 /api/snapshot 返回:
+     {"ok":true,
+      "hosts":{"<host_id>":{"display_ip":"10.0.0.1"}},
+      "inferences":[{"state":"running",
+                     "instances":[{"base_url":"http://10.0.0.1:8000","model":"my-model",
+                                   "host_id":"<host_id>","api_port":8000}]}]}
+   本页即可一键生成端点列表。字段缺失时按「hosts[host_id].display_ip + api_port」兜底。 */
+/* 自动填写时对「思考模式」的猜测规则: 模型名命中即默认勾选「思考」 */
+const THINKING_HINT_RE=/(think|reason|\br1\b|qwq|cot)/i;
+async function autoFillEndpoints(){
+  let snap;
+  try{snap=await api("/api/snapshot")}catch(e){alert("读取推理状态失败: "+e.message);return}
+  const hosts=snap.hosts||{};
+  const eps=[];const seen=new Set();
+  (snap.inferences||[]).forEach(inf=>{
+    if(inf.state&&inf.state!=="running")return;
+    const insts=(inf.instances||[]).filter(i=>!i.state||i.state==="running");
+    insts.forEach(inst=>{
+      const host=hosts[inst.host_id]||{};
+      const ip=host.display_ip||host.ip||inst.ip||"";
+      const port=inst.api_port||inst.port||8000;
+      const base=inst.base_url||inst.url||(ip?("http://"+ip+":"+port):"");
+      if(!base||seen.has(base))return;
+      seen.add(base);
+      const model=inst.served_model_name||inst.model||"";
+      // 测试名称默认用模型名称(可在页面上改成自定义名)
+      eps.push({name:model,base_url:base,model,thinking:THINKING_HINT_RE.test(model),api_key:null});
+    });
+  });
+  if(!eps.length){alert("没有取到正在运行的推理服务（请在端点列表手动填写 base_url / model）");return}
+  const preview=eps.slice(0,8).map(e=>`  ${e.base_url}  (${e.model||"未知模型"})`).join("\n");
+  if(!confirm(`检测到 ${eps.length} 个正在运行的推理 API 入口：\n${preview}\n\n将替换当前端点列表（超过 8 个只取前 8）。继续？`))return;
+  renderEndpoints(eps.slice(0,8));
+  saveCfg();
+  if(eps.length>8)alert("注意: 超过 8 个端点已被截断（评测端点上限 8，防止请求风暴）");
+}
+function endpointRow(ep){
+  const d=document.createElement("div");d.className="endpoint-row";
+  const custom=isAutoName(ep)?"":String(ep.name||"").trim();   // 未自定义 -> 输入框留空, 用模型名兜底
+  const model=String(ep.model||"").trim();
+  d.innerHTML=`<input class="ep-name" type="text" value="${esc(custom)}" placeholder="${esc(model||"默认=模型名")}" title="测试名称：留空 = 默认显示模型名称">
+    <input class="ep-base" type="text" value="${esc(ep.base_url)}" placeholder="http://host:port">
+    <input class="ep-model" type="text" value="${esc(ep.model)}" placeholder="model">
+    <input class="ep-key" type="password" value="${esc(ep.api_key||"")}" placeholder="API Key(可选)" title="OpenAI 兼容端点鉴权时需要">
+    <span class="ep-ops"><label class="ck"><input type="checkbox" class="ep-think" ${ep.thinking?"checked":""}>思考</label>
+    <button class="ep-del" style="padding:4px 8px" title="删除">✕</button></span>`;
+  const nameIn=d.querySelector(".ep-name"),modelIn=d.querySelector(".ep-model");
+  // 名称留空时, 占位符实时跟随模型名 → 用户一眼看到「测试名称默认=模型名」
+  modelIn.addEventListener("input",()=>{if(!nameIn.value.trim())nameIn.placeholder=modelIn.value.trim()||"默认=模型名"});
+  d.querySelector(".ep-del").onclick=()=>{d.remove();saveCfg()};
+  return d;
+}
+function esc(s){return String(s??"").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]))}
+function currentEndpoints(){
+  const raw=[...document.querySelectorAll("#endpoints .endpoint-row")].map(r=>({
+    name:r.querySelector(".ep-name").value.trim(),
+    base_url:r.querySelector(".ep-base").value.trim(),
+    model:r.querySelector(".ep-model").value.trim(),
+    thinking:r.querySelector(".ep-think").checked,
+    api_key:r.querySelector(".ep-key").value.trim()||null}));
+  // 留空的名称 -> 模型名(测试名称默认=模型名)
+  return resolveEpNames(raw);
+}
+
+function initCfg(){
+  const cfg=loadCfg()||{eps:DEFAULTS,concurrency:2,sampleN:0,judgeEnabled:true,
+    judgeBase:DEFAULTS[0].base_url,judgeModel:DEFAULTS[0].model,
+    rounds:1,maxTokens:2048,temperature:0.1,qTimeout:300,retries:2,diffSel:["easy","medium","hard"]};
+  renderEndpoints(cfg.eps);
+  if(cfg.tier&&$("#tier")){
+    const t=$("#tier");t.value=cfg.tier;t.dispatchEvent(new Event("change"));
+  }
+  // 原样恢复(不设上下限): 上次手动设置的参数多大都保留, 刷新不复原
+  $("#concurrency").value=cfg.concurrency||2;$("#sampleN").value=cfg.sampleN??0;
+  $("#rounds").value=cfg.rounds||1;$("#maxTokens").value=cfg.maxTokens||2048;
+  $("#temperature").value=cfg.temperature??0.1;$("#qTimeout").value=cfg.qTimeout||300;
+  $("#retries").value=cfg.retries??0;
+  const dset=new Set(cfg.diffSel);
+  document.querySelectorAll(".diff-sel").forEach(e=>{e.checked=dset.has(e.value)});
+  $("#diffAll").onclick=()=>{document.querySelectorAll(".diff-sel").forEach(e=>e.checked=true);saveCfg()};
+  $("#diffNone").onclick=()=>{document.querySelectorAll(".diff-sel").forEach(e=>e.checked=false);saveCfg()};
+  $("#judgeEnabled").checked=!!cfg.judgeEnabled;
+  $("#judgeBase").value=cfg.judgeBase;$("#judgeModel").value=cfg.judgeModel;
+  $("#judgeBox").style.display=cfg.judgeEnabled?"block":"none";
+  $("#addEp").onclick=()=>{$("#endpoints").appendChild(endpointRow({name:"",base_url:"",model:"",thinking:false}));saveCfg()};
+  $("#autoEp").onclick=autoFillEndpoints;
+  $("#resetEp").onclick=()=>{renderEndpoints(DEFAULTS);saveCfg()};
+  $("#tier")&&$("#tier").addEventListener("change",saveCfg);
+  ["#concurrency","#sampleN","#rounds","#maxTokens","#temperature","#qTimeout","#retries","#judgeBase","#judgeModel"].forEach(s=>$(s).addEventListener("input",saveCfg));
+  document.querySelectorAll(".diff-sel").forEach(e=>e.addEventListener("change",saveCfg));
+  $("#judgeEnabled").addEventListener("change",e=>{
+    const on=e.target.checked;
+    if(on){
+      // 2026-09-15: 勾选启用时, 评委 API 默认填用户填的第一个端点地址(模型同理),
+      // 方便直接以同端点做主观题/SQL 判分; 手动改过的值仍可再覆盖。
+      const first=currentEndpoints().find(x=>x.base_url);
+      if(first){
+        if(first.base_url)$("#judgeBase").value=first.base_url;
+        if(first.model)$("#judgeModel").value=first.model;
+      }
+    }
+    $("#judgeBox").style.display=on?"block":"none";saveCfg();
+  });
+  $("#endpoints").addEventListener("input",saveCfg);
+}
+
+/* ---------- Meta ---------- */
+async function loadMeta(){
+  try{
+    META=await api("/api/quality/meta");
+  }catch(e){$("#metaBox").innerHTML=`<span class="err-text">加载失败: ${esc(e.message)}</span>`;return}
+  const sel=$("#tier");sel.innerHTML="";
+  META.tiers.forEach(t=>{
+    const o=document.createElement("option");o.value=t.tier;
+    o.textContent=`${t.tier} ${TIER_NAMES[t.tier]||""} · ${t.n} 题 · ≈${t.est_wall_min}min`;
+    sel.appendChild(o);
+  });
+  sel.onchange=()=>updateTierInfo();
+  // 恢复上次使用的档位; 无保存档位(旧配置/新访客)时默认 SQL —— 推理质量测试主赛道,
+  // 25 题一格一题、Q01..Q25 题号与参考页一致, 避免默认落在第一个档位 T1(69 题)
+  // 造成「总格子数量错乱、表头乱码」的观感。用户保存过的档位仍优先恢复。
+  {const savedTier=(loadCfg()||{}).tier;
+   const _valid=savedTier&&META.tiers.some(t=>t.tier===savedTier);
+   const _fallback=(META.tiers.some(t=>t.tier==="SQL")?"SQL":META.tiers[0]?.tier)||"";
+   sel.value=_valid?savedTier:_fallback;}
+  updateTierInfo();
+  const d=document.createElement("div");
+  d.innerHTML=`总题数 <b>${META.total}</b><br>`+["domains","judges"].map(k=>{
+    const items=Object.entries(META[k]).map(([n,c])=>`<span class="chip">${esc(n)} <b>${c}</b></span>`).join("");
+    return `<div style="margin-top:6px">${k==="domains"?"领域":"评分类型"}</div><div class="chips">${items}</div>`;
+  }).join("");
+  if(META.benchmarks){
+    const btotal=Object.values(META.benchmarks).reduce((a,items)=>a+items.length,0);
+    d.insertAdjacentHTML("beforeend",`<div style="margin-top:6px">基准类别 <b>${btotal}</b> 个（按领域）</div>`);
+  }
+  $("#metaBox").innerHTML="";$("#metaBox").appendChild(d);
+  renderBrowse();
+}
+function updateTierInfo(){
+  if(!META)return;
+  const t=META.tiers.find(x=>x.tier===$("#tier").value);
+  if(!t)return;
+  const dc=Object.entries(t.diff||{}).map(([k,v])=>`${k}:${v}`).join(" / ");
+  let tierTxt=`${t.n} 题 · 预计墙钟 ≈${t.est_wall_min} min（3 端点并行各跑一套）· 难度 ${dc}`;
+  if($("#tier").value==="SQL")tierTxt+=" · 判分: SQLite 真实执行比对(无需评委) · LLM-Judge 为可选的第二意见";
+  $("#tierInfo").textContent=tierTxt;
+}
+
+/* ---------- Run ---------- */
+function setStatus(cls,txt){
+  const p=$("#statusPill");p.className="status-pill "+cls;p.textContent=txt;
+}
+async function startRun(){
+  const eps=currentEndpoints();
+  if(!eps.length||eps.some(e=>!e.base_url||!e.model)){alert("请先补全端点配置");return}
+  const seen=new Set();
+  for(const ep of eps){const k=ep.base_url.trim().replace(/\/+$/,"");
+    if(seen.has(k)){alert(`端点重复：${ep.name}（${k}）只保留一个即可`);return}
+    seen.add(k)}
+  // 2026-09-14: SQL 硬门槛已移除——判分改为 SQLite 真实执行比对, 无需评委(见 updateTierInfo)
+  const _deadSet=new Set();
+  // 启动前预检(容器内探 /v1/models, 与评测同网络路径): 拦住死端点, 避免跑 4 题熔断「悄悄失败」
+  try{
+    const _bases=eps.map(e=>e.base_url);
+    const _judgeIdx=$("#judgeEnabled").checked&&$("#judgeBase").value.trim()?_bases.push($("#judgeBase").value.trim())-1:-1;
+    const _pf=await api("/api/quality/preflight",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({bases:_bases})});
+    const _dead=[];(_pf.results||[]).forEach((r,i)=>{if(!r.ok)_dead.push({base:_bases[i],judge:i===_judgeIdx,err:r.error||"不可达"})});
+    if(_dead.length===_bases.length){
+      alert("❌ 预检失败：所有端点均不可达 —\n"+_dead.map(d=>`  ${d.base}${d.judge?"（评委）":""} → ${d.err}`).join("\n")+"\n\n推理可能已停止。请点「🔄 自动获取运行中推理」重新拉取当前在服务的推理，或先到启动页拉起推理。");return}
+    if(_dead.length){
+      const dj=_dead.filter(d=>d.judge), de=_dead.filter(d=>!d.judge);
+      const dl=_dead.map(d=>`  ${d.base}${d.judge?"（评委）":""} → ${d.err}`).join("\n");
+      let msg=`⚠ 预检发现不可达端点：\n${dl}\n\n`;
+      if(de.length)msg+="「确定」= 剔除死端点后仅用可达端点开始评测\n「取消」= 回去修改端点";
+      else msg+="（评委端点不可达：客观题照常评分，主观题/SQL 判分会失败并计入错误。建议先去设置评委端点。）\n「确定」= 继续，「取消」= 回去修改";
+      if(!confirm(msg))return;
+      _dead.filter(d=>!d.judge).forEach(d=>_deadSet.add(d.base.replace(/\/+$/,"")));
+    }
+  }catch(_pe){/* 预检接口本身故障不阻塞评测(后端启动校验仍在) */}
+  const body={tier:$("#tier").value,endpoints:eps,
+    concurrency:+$("#concurrency").value||2,sample_n:+$("#sampleN").value||0,
+    rounds:+$("#rounds").value||1,
+    max_tokens:+$("#maxTokens").value||2048,
+    temperature:+$("#temperature").value??0.1,
+    timeout:+$("#qTimeout").value||300,
+    retries:+$("#retries").value||0};
+  const dsel=[...document.querySelectorAll(".diff-sel:checked")].map(e=>e.value);
+  if(dsel.length&&dsel.length<3)body.difficulty_filter=dsel;
+  if($("#judgeEnabled").checked&&$("#judgeBase").value.trim()){
+    body.subjective_judge={enabled:true,base_url:$("#judgeBase").value.trim(),model:$("#judgeModel").value.trim()};
+  }
+  try{
+    if(_deadSet.size){body.endpoints=body.endpoints.filter(e=>!_deadSet.has(e.base_url.replace(/\/+$/,"")));
+      if(!body.endpoints.length){alert("剔除不可达端点后没有可用端点了");return}}
+    const r=await api("/api/quality/run",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(body)});
+    RUNID=r.run_id;RESULTS=null;
+    RES_META={status:"running",partial:true,total:0};
+    resetHM();
+    {const _f1=$("#hmDomain"),_f2=$("#hmDiff"),_f3=$("#hmSearch");if(_f1){_f1.value="";_f2.value="";_f3.value="";PAGE=0;}}
+    $("#statsCard").style.display="none";$("#chartCard").style.display="none";
+    LIVE_PREV=new Set();
+    $("#liveCard").style.display="block";
+    $("#hmLiveTag").style.display="inline-block";
+    $("#heatmapBox").innerHTML=`<div class="empty">评测启动中，等待第一批结果…（下方实时面板同步显示）</div>`;
+    $("#liveBox").innerHTML=`<div class="live-head"><div class="live-bar"><div style="width:0%"></div></div><span class="muted">评测启动中，等待第一条结果…</span></div>`;
+    setStatus("status-run","运行中");
+    $("#runBtn").disabled=true;$("#cancelBtn").disabled=false;
+    poll();
+  }catch(e){alert("启动失败: "+e.message)}
+}
+function renderPerEp(perEp){
+  const box=$("#epProg");
+  if(!perEp||!Object.keys(perEp).length){box.innerHTML="";return}
+  let html="";
+  Object.entries(perEp).forEach(([name,p])=>{
+    const pc=p.total>0?(p.done/p.total*100):0;
+    html+=`<div class="ep-line"><span class="ep-name" title="${esc(name)}">${esc(name)}</span>
+      <div class="ep-bar"><div class="ep-fill" style="width:${pc.toFixed(1)}%"></div></div>
+      <span class="ep-num">${p.done}/${p.total}</span></div>`;
+  });
+  box.innerHTML=`<div class="muted" style="font-size:12px;margin-bottom:4px">📡 各端点进度</div>`+html;
+}
+/* ---------- 实时测试表现（热力图下方, 运行中每 3s 刷新） ---------- */
+function renderLive(d){
+  if(!d)return;
+  const p=d.progress||{};const done=p.done||0,total=p.total||0;
+  const box=$("#liveBox");
+  const st=$("#liveState");
+  if(d.running){st.textContent="运行中";st.className="badge badge-run"}
+  else if(d.cancelling){st.textContent="停止中…";st.className="badge badge-err"}
+  else{st.textContent="已结束";st.className="badge badge-pend"}
+  const pct=total>0?Math.min(100,done/total*100):0;
+  const nIn=(d.running_now||[]).length;
+  const runTxt=(d.running&&nIn)?` · 在途 ${nIn} 请求`:"";
+  let head=`<div class="live-head">
+    <div class="live-bar"><div style="width:${pct.toFixed(1)}%"></div></div>
+    <span class="muted" style="white-space:nowrap">${done}/${total} 题轮完成</span>
+    ${SKEL?`<span class="muted" style="white-space:nowrap">${SKEL.questions.length} 题 × ${SKEL.endpoints.length} 端点 × ${SKEL.rounds} 轮 · 共 ${SKEL.total_cells} 格</span>`:""}
+    <span class="muted" style="white-space:nowrap">在途 ${nIn} 请求${runTxt}</span>
+    <span class="muted" style="white-space:nowrap">已判定 ${Object.keys(CELLS).length}/${SKEL?SKEL.total_cells:"?"} 格</span>
+  </div>`;
+  const items=(d.items||[]).slice(-80).reverse();
+  let rows="";
+  const seen=new Set();
+  items.forEach(it=>{
+    const key=it.qid+"|"+(it.endpoint||"")+"|"+(it.ts||0);
+    seen.add(key);
+    const fresh=!LIVE_PREV.has(key)&&LIVE_PREV.size>0;
+    let bd,lb,col;
+    if(it.error){bd="badge-err";lb="错误";col="var(--err)"}
+    else if(it.score===null||it.score===undefined){bd=it.finished?"badge-fail":"badge-pend";lb=it.finished?"未评分":"—";col=it.finished?"#d4a017":"var(--muted)"}
+    else if(it.score>=1){bd="badge-pass";lb="通过";col="var(--ok)"}
+    else if(it.score>0){bd="badge-part";lb="部分";col="var(--amber)"}
+    else{bd="badge-fail";lb="失败";col="var(--fail)"}
+    rows+=`<div class="live-row${fresh?" new":""}" data-qid="${esc(it.qid)}" data-ep="${esc(it.endpoint||"")}" data-bm="${esc(it.benchmark||"")}" data-diff="${esc(it.difficulty||"")}">
+      <span class="badge ${bd}">${lb}</span>
+      ${(it.round||1)>1?`<span class="badge badge-pend" style="flex-shrink:0" title="第${esc(it.round)}轮">R${esc(it.round)}</span>`:""}
+      <span class="lv-qid" title="${esc(it.qid)}">${esc(it.qid)}</span>
+      <span class="lv-bm" title="${esc(it.benchmark||"")}">${esc(it.benchmark||"")}${it.domain?" · "+esc(it.domain):""}${it.difficulty?"/"+esc(it.difficulty):""}</span>
+      <span class="lv-ep">${esc(it.endpoint||"")}${it.latency?` · ${it.latency.toFixed(1)}s`:""}</span>
+      <span class="lv-score" style="color:${col}">${it.score===null||it.score===undefined?"—":(+it.score).toFixed(2)}</span>
+    </div>`;
+  });
+  LIVE_PREV=seen;
+  box.innerHTML=head+`<div class="live-panel">${rows||'<div class="empty" style="padding:16px">等待第一条结果…（不同端点完成节奏不同）</div>'}</div>`;
+  box.querySelectorAll(".live-row[data-qid]").forEach(el=>el.onclick=()=>openInspector(el.dataset.qid,el.dataset.ep,el.dataset.bm));
+}
+/* ---------- 实时热力图: 骨架(格子总数只由骨架决定) + 结果覆盖 + 每行最多 1 个进行中 ---------- */
+async function fetchSkeleton(runId, silent){
+  // /skeleton: 当前运行走内存, 历史运行读落盘骨架; 都拿不到时返回 null(旧 run 降级)
+  try{
+    const r=await api("/api/quality/skeleton?run_id="+encodeURIComponent(runId||""));
+    if(r&&r.questions){SKEL={"run_id":runId||r.run_id,"questions":r.questions,"endpoints":r.endpoints||[],
+      "rounds":r.rounds||1,"concurrency":r.concurrency||1,"total_cells":r.total_cells||(r.questions.length*(r.endpoints||[]).length*(r.rounds||1)),
+      "partial":!!r.partial_skeleton};
+      QORDER={};SKEL.questions.forEach((q,i)=>{QORDER[q.qid]=i});
+    }
+  }catch(e){ if(!silent)console.warn("skel",e); SKEL=null; }
+  return SKEL;
+}
+function renderLiveHeatmap(lv,st){
+  // 1) 骨架: 运行 id 变化 → 异步拉全量骨架(一次性, 之后只增量)
+  if(lv&&SKEL&&lv.run_id!=null&&SKEL.run_id!==lv.run_id){SKEL=null;CELLS={};}
+  if(lv&&lv.run_id!=null&&lv.skeleton&&!SKEL){
+    fetchSkeleton(lv.run_id,true).then(()=>{if(HM_LIVE){try{renderMatrix(true)}catch(e){}}});
+  }
+  if(!SKEL)return;
+  // 2) 已判定格子增量(照搬参考页「单槽单状态、终态原地覆盖」; 中途刷新也能补齐全部格子)
+  (lv.cells||[]).forEach(c=>{const[qid,ep,rnd,code,score]=c;const k=(rnd||1)+"|"+ep+"|"+qid;
+    CELLS[k]=code;if(score!==undefined&&score!==null)SCORES[k]=score;});
+  LIVE_SEQ=lv.seq||0;
+  // 3) 进行中/前沿(2026-09-17 按用户要求改成「严格顺序观感」):
+  //    - 显示列序 = 骨架序 = 引擎派题序;
+  //    - 每条泳道(轮次×端点)的**第一个未完成格**=蓝格;
+  //    - **只有蓝格之前的格子显示真实颜色**(通过/部分/失败/错误/未评分), 蓝格之后一律留灰 ——
+  //      即使某题已经判完(并发下常有)也先不点亮, 等蓝格走到它时才亮, 于是矩阵读起来就是
+  //      「一条从左往右推进的进度条」, 不会出现灰区里孤零零的绿格;
+  //    - 紧挨蓝格、且确实在途的并发格子用浅蓝「也在跑」标出(并发数>1 时看得到谁在并行),
+  //      行标签另外写 `+N 在途`。
+  RUNNING_CELLS=new Set();QUEUE_CELLS=new Set();LIVE_VISIBLE=new Set();
+  const liveRun=st.running||st.cancelling;
+  if(liveRun){
+    const LANE_KEYS={};
+    (lv.running_now||[]).forEach(k=>{
+      const lane=(k.round||1)+"|"+(k.ep||"");
+      LANE_INFLIGHT[lane]=(LANE_INFLIGHT[lane]||0)+1;
+      (LANE_KEYS[lane]=LANE_KEYS[lane]||new Set()).add((k.round||1)+"|"+(k.ep||"")+"|"+k.qid);
+    });
+    const order=matrixQListFiltered().map(q=>q.qid);
+    const lanes=new Set(Object.keys(LANE_KEYS));
+    // 所有泳道都要算前沿(否则未开工泳道已完成的格子会被整片压成灰色)
+    for(let rnd=1;rnd<=matrixRounds();rnd++)for(const ep of matrixEps())lanes.add(rnd+"|"+ep);
+    lanes.forEach(lane=>{
+      const i=lane.indexOf("|"),rnd=lane.slice(0,i),ep=lane.slice(i+1);
+      const keys=order.map(qid=>rnd+"|"+ep+"|"+qid);
+      const fi=keys.findIndex(k=>CELLS[k]===undefined);
+      if(fi<0)return;                                  // 该泳道已全部完成
+      keys.slice(0,fi).forEach(k=>LIVE_VISIBLE.add(k)); // 前沿之前 → 保持真实颜色
+      if(!LANE_INFLIGHT[lane])return;                   // 该泳道暂无在途请求 → 不涂蓝
+      RUNNING_CELLS.add(keys[fi]);
+      const fly=LANE_KEYS[lane]||new Set();
+      for(let j=fi+1;j<keys.length;j++){                // 紧挨前沿的在途格 → 浅蓝「也在跑」
+        if(!fly.has(keys[j]))break;
+        QUEUE_CELLS.add(keys[j]);
+      }
+    });
+  }
+  if(lv.run_id!=null)HM_LIVE=true;
+  renderHeatmap(false);
+}
+let _pollFails=0; let _histTick=0;
+async function poll(){
+  try{
+    const [st,lv]=await Promise.all([
+      api("/api/quality/status"),
+      api("/api/quality/live?since="+LIVE_SEQ).catch(()=>null)
+    ]);
+    _pollFails=0;
+    const d=st.progress?.done||0,t=st.progress?.total||0;
+    if(t>0){$("#progressWrap").style.display="block";
+      $("#progressBar").style.width=(d/t*100).toFixed(1)+"%";
+      $("#progressText").textContent=`${d}/${t} 题完成 · 预计剩余 ${st.current?Math.max(0,Math.round((st.current.est_wall_min||0)*(1-d/t)*60/1)):0}s`;
+    }
+    try{renderPerEp(st.per_ep)}catch(e){console.warn("perEp",e)}
+    if(lv){
+      try{renderLive(lv)}catch(e){console.warn("live",e)}
+      // 运行中: 热力图实时刷新(三种模式通用)。渲染异常绝不允许杀死轮询循环。
+      if(st.running||st.cancelling){try{renderLiveHeatmap(lv,st)}catch(e){console.warn("liveHM",e)}}
+    }
+    if(st.running||st.cancelling){
+      if(++_histTick%5===0){loadHistory().catch(()=>{})}
+      pollTimer=setTimeout(poll,3000)}
+    else{
+      clearTimeout(pollTimer);
+      // 运行结束（完成/出错/被停止）：载入磁盘上的（部分）结果
+      HM_LIVE=false;
+      if(st.last_error){setStatus("status-err","出错");$("#progressText").innerHTML=`<span class="err-text">${esc(st.last_error)}</span>`}
+      else{setStatus("status-done","完成");$("#progressText").textContent="评测完成"}
+      $("#runBtn").disabled=false;$("#cancelBtn").disabled=true;
+      renderPerEp(null);
+      $("#liveCard").style.display="none";
+      $("#hmLiveTag").style.display="none";
+      loadHistory().catch(()=>{});   // 历史卡徽章/续测按钮立刻跟真实状态, 不等刷新
+      await loadResults(RUNID,{silent404:true});
+    }
+  }catch(e){
+    // 2026-09-12 加固: 轮询遇瞬时网络/接口异常不再永久死掉(旧版一次异常即停表,
+    // 热力图/进度从此永不更新)。连续失败退避重试, 20 次后放弃并恢复按钮。
+    _pollFails++;
+    if(_pollFails<=20){
+      setStatus("status-err","连接失败,重试中("+_pollFails+")");
+      pollTimer=setTimeout(poll,5000);
+    }else{
+      setStatus("status-err","连接失败");$("#runBtn").disabled=false;$("#cancelBtn").disabled=true;
+    }
+  }
+}
+async function cancelRun(){
+  try{await api("/api/quality/cancel",{method:"POST"})}catch(e){console.warn(e)}
+  clearTimeout(pollTimer);
+  setStatus("status-idle","正在停止…");
+  $("#cancelBtn").disabled=true;
+  // 等待后台写完部分结果落盘（run 结束前可能是 running 状态，等 /status 结束）
+  for(let i=0;i<60;i++){
+    await new Promise(r=>setTimeout(r,1000));
+    let st=null;try{st=await api("/api/quality/status")}catch(e){}
+    if(st&&!st.running&&!st.cancelling){
+      setStatus("status-idle","已停止");
+      $("#runBtn").disabled=false;
+      loadHistory().catch(()=>{});
+      await loadResults(RUNID,{silent404:true,afterStop:true});
+      return;
+    }
+  }
+  setStatus("status-idle","已停止");
+  $("#runBtn").disabled=false;
+  loadHistory().catch(()=>{});
+  await loadResults(RUNID,{silent404:true,afterStop:true});
+}
+
+/* ---------- Results ---------- */
+async function loadResults(runId,opt){
+  opt=opt||{};
+  // 停止/出错后磁盘文件可能稍后才出现：最多重试 30 次
+  let lastErr=null;
+  for(let i=0;i<30;i++){
+    try{
+      const r=await api("/api/quality/results?run_id="+runId);
+      RESULTS=r.results;RUNID=r.run_id;
+      RES_META={status:r.status||"done",partial:!!r.partial,total:r.total||0};
+      RES_META.padCells=null;
+      // 2026-09-14: 骨架驱动 → 先用 /skeleton 拿到全量骨架(新 run 有落盘; 旧 run 服务器回退结果推导),
+      // 再把磁盘结果灌进 CELLS(单槽终态)。不再用 RUN_SK/padCells 临时补格 —— 结束/中途刷新格子数恒等于骨架。
+      await fetchSkeleton(runId,true);
+      CELLS={};SCORES={};
+      const _code=r=>{
+        if(r.error)return (String(r.error)==="cancelled")?null:3;
+        const v=r.score;
+        if(v===null||v===undefined)return r.output!==undefined?4:null;
+        return v>=1?1:(v>0?5:2);   // 5 = 部分得分(0.1~0.9)
+      };
+      (RESULTS||[]).forEach(x=>{
+        const k=cellKey(x.round||1,x.endpoint,x.qid);
+        const c=_code(x);if(c)CELLS[k]=c;
+        if(typeof x.score==="number")SCORES[k]=x.score;   // 部分得分上格子(主观题 0.1~0.9)
+      });
+      RUNNING_CELLS=new Set();QUEUE_CELLS=new Set();LIVE_VISIBLE=new Set();LANE_INFLIGHT={};
+      $("#liveCard").style.display="none"; // 结束/回看: 实时面板让位给正式结果
+      HM_LIVE=false;$("#hmLiveTag").style.display="none";
+      renderStats();
+      $("#statsCard").style.display="block";
+      renderCharts();
+      renderHeatmap();
+      if(opt.afterStop||RES_META.partial){
+        setStatus("status-idle","已停止（部分结果）");
+      }
+      return;
+    }catch(e){lastErr=e;
+      if(!opt.silent404&&i===0){/* 首错静默重试 */}
+      await new Promise(r=>setTimeout(r,2000));
+    }
+  }
+  // 确实无结果文件
+  if(!(opt.silentNoFile)) {
+    if(opt.silent404||RESULTS){
+      $("#progressText").innerHTML=`<span class="err-text">无可用结果（${esc(lastErr?lastErr.message:"")}）</span>`;
+    }else{alert("读取结果失败: "+(lastErr?lastErr.message:""))}
+  }
+}
+function pct(x){return isFinite(x)?(x*100).toFixed(1)+"%":"—"}
+function colorsFor(v){
+  if(v===null||v===undefined)return "score-none";
+  if(v>=0.999)return "score-good";
+  if(v>=0.85)return "score-good";
+  if(v>=0.5)return "score-mid";
+  if(v>0)return "score-low";
+  return "score-bad";
+}
+function renderStats(){
+  const eps=[...new Set(RESULTS.map(r=>r.endpoint))];
+  // 状态横幅
+  const bn=$("#resBanner");
+  if(RES_META.status==="cancelled"){
+    bn.innerHTML=`<div class="banner warn">⏹ 已停止 · 展示部分结果（${RESULTS.length}/${RES_META.total||RESULTS.length} 条已完成记录）</div>`;
+    bn.style.display="";
+  }else if(RES_META.status==="error"){
+    bn.innerHTML=`<div class="banner warn">⚠️ 运行出错 · 展示已落盘的部分结果（${RESULTS.length} 条）</div>`;
+    bn.style.display="";
+  }else if(RES_META.partial){
+    bn.innerHTML=`<div class="banner info">⏳ 结果不完整（中断/进行中，${RESULTS.length} 条）</div>`;
+    bn.style.display="";
+  }else{bn.innerHTML="";bn.style.display="none"}
+  const box=$("#statCards");box.innerHTML="";
+  const tbox=$("#statTables")||box;tbox.innerHTML="";
+  eps.forEach(ep=>{
+    const sub=RESULTS.filter(r=>r.endpoint===ep);
+    const sc=sub.map(r=>r.score).filter(x=>x!==null&&x!==undefined);
+    const avg=sc.length?sc.reduce((a,b)=>a+b,0)/sc.length:null;
+    // 满分/部分得分/零分分开统计: 主观题的 0.1~0.9 不再被并进「答对/答错」两档
+    const full=sc.filter(x=>x>=1).length;
+    const part=sc.filter(x=>x>0&&x<1).length;
+    const zero=sc.filter(x=>x<=0).length;
+    const err=sub.filter(r=>r.error).length;
+    const lat=sub.map(r=>r.latency).filter(x=>x>0);
+    const avgLat=lat.length?lat.reduce((a,b)=>a+b,0)/lat.length:null;
+    const card=document.createElement("div");card.className="stat-card";
+    card.innerHTML=`<div class="lbl">${esc(ep)}</div>
+      <div class="big">${avg===null?"—":avg.toFixed(3)}</div>
+      <div class="sub">满分 ${full}（${pct(sc.length?full/sc.length:NaN)}）· 部分得分 ${part} · 零分 ${zero} · 错误 ${err}</div>
+      <div class="sub">平均延迟 ${avgLat?avgLat.toFixed(1)+"s":"—"} · 已评分 ${sc.length}</div>
+      <div class="sub">领域优于/持平/落后<i id="d-${esc(ep)}"></i></div>`;
+    box.appendChild(card);
+  });
+  // 领域对比: 每个端点各领域平均分
+  const dm={};
+  RESULTS.forEach(r=>{if(r.score!==null&&r.score!==undefined){
+    (dm[r.domain]=dm[r.domain]||{})[r.endpoint]=dm[r.domain][r.endpoint]||[];
+    dm[r.domain][r.endpoint].push(r.score)}});
+  const domRows=Object.entries(dm).map(([dom,eps2])=>{
+    const row=[dom];eps.forEach(ep=>{
+      const a=(eps2[ep]||[]);row.push(a.length?a.reduce((x,y)=>x+y,0)/a.length:null)});
+    return row});
+  const tbl=document.createElement("div");tbl.className="tbl-sec";
+  let th=`<tr><th>领域</th>`+eps.map(e=>`<th>${esc(e)}</th>`).join("")+`</tr>`;
+  const trs=domRows.map(r=>`<tr><td>${esc(r[0])}</td>`+r.slice(1).map(v=>
+    `<td style="color:${v===null?"var(--muted-2)":v>=0.7?"var(--accent)":v>=0.4?"var(--amber)":"var(--red)"}">${v===null?"—":(v*100).toFixed(1)+"%"}</td>`).join("")+`</tr>`).join("");
+  tbl.innerHTML=`<div class="tbl-title">按领域（各端点平均得分）</div><table>${th}${trs}</table>`;
+  tbox.appendChild(tbl);
+  // 难度
+  const diffBox=document.createElement("div");diffBox.className="tbl-sec";
+  let dth=`<tr><th>难度</th>`+eps.map(e=>`<th>${esc(e)}</th>`).join("")+`</tr>`;
+  const dr={};
+  RESULTS.forEach(r=>{if(r.score!==null&&r.score!==undefined){
+    (dr[r.difficulty]=dr[r.difficulty]||{})[r.endpoint]=dr[r.difficulty][r.endpoint]||[];
+    dr[r.difficulty][r.endpoint].push(r.score)}});
+  const dtrs=["easy","medium","hard"].map(dz=>{
+    const e2=dr[dz]||{};
+    return `<tr><td>${dz}</td>`+eps.map(ep=>{const a=e2[ep]||[];const v=a.length?a.reduce((x,y)=>x+y,0)/a.length:null;
+      return `<td style="color:${v===null?"var(--muted-2)":v>=0.7?"var(--accent)":v>=0.4?"var(--amber)":"var(--red)"}">${v===null?"—":(v*100).toFixed(1)+"%"}</td>`}).join("")+`</tr>`}).join("");
+  diffBox.innerHTML=`<div class="tbl-title">按难度（各端点平均得分）</div><table>${dth}${dtrs}</table>`;
+  tbox.appendChild(diffBox);
+}
+
+/* ---------- 图形化结果（CSS 柱状图：Benchmark 均分 / 难度 / 分布） ---------- */
+function renderCharts(){
+  const box=$("#chartBox");box.innerHTML="";
+  if(!RESULTS||!RESULTS.length){return}
+  const eps=[...new Set(RESULTS.map(r=>r.endpoint))];
+  // 1) Benchmark 平均分（每题×每端点）
+  const agg={};
+  RESULTS.forEach(r=>{
+    if(r.score===null||r.score===undefined)return;
+    (agg[r.benchmark]=agg[r.benchmark]||{})[r.endpoint]=agg[r.benchmark][r.endpoint]||[];
+    agg[r.benchmark][r.endpoint].push(r.score);
+  });
+  const bmRows=Object.entries(agg).map(([bm,m])=>({bm,
+    vals:eps.map(ep=>{const a=(m[ep]||[]).filter(x=>x!==null&&x!==undefined);
+      return a.length?a.reduce((x,y)=>x+y,0)/a.length:null})}))
+    .sort((a,b)=>Math.max(...b.vals.map(v=>v==null?-1:v))-Math.max(...a.vals.map(v=>v==null?-1:v)));
+  const ec=opsBarColor(eps.length);
+  let h1=`<div class="chart-sec"><h3>📊 Benchmark 平均得分（绿=高分 红=低分，按端点分组）</h3><div class="bars">`;
+  bmRows.forEach(row=>{
+    const seg=row.vals.map((v,i)=>{
+      if(v==null)return "";
+      const col=(v>=0.85?ec.good[i]:(v>=0.5?ec.mid[i]:(v>0?ec.low[i]:ec.bad[i])));
+      return `<div class="bl-seg" style="width:${(v*100).toFixed(1)}%;background:${col};min-width:4px" title="${esc(eps[i])}: ${(v*100).toFixed(1)}%"></div>`;
+    }).join("");
+    h1+=`<div class="bar-line"><span class="bl-name" title="${esc(row.bm)}">${esc(row.bm)}</span>
+      <div class="bl-track">${seg||'<span class="muted" style="font-size:11px;padding:0 6px">无评分</span>'}</div>
+      <span class="bl-num">${row.vals.map(v=>v==null?"—":(v*100).toFixed(0)+"%").join(" / ")}</span></div>`;
+  });
+  h1+=`</div></div>`;
+  // 2) 得分分布直方图（0-1 十桶 × 端点）
+  const buckets=[[0,0.1],[0.1,0.2],[0.2,0.3],[0.3,0.4],[0.4,0.5],[0.5,0.6],[0.6,0.7],[0.7,0.8],[0.8,0.9],[0.9,1.01]];
+  const dist={};
+  RESULTS.forEach(r=>{
+    if(r.score===null||r.score===undefined)return;
+    (dist[r.endpoint]=dist[r.endpoint]||Array(10).fill(0));
+    for(let b=0;b<10;b++){if(r.score>=buckets[b][0]&&r.score<buckets[b][1]){dist[r.endpoint][b]++;break}}
+    if(r.score===1)dist[r.endpoint][9]++;
+  });
+  let h2=`<div class="chart-sec"><h3>📈 得分分布（分数段 × 端点）</h3><div class="hist">`;
+  buckets.forEach((bk,i)=>{
+    const stack=eps.map((ep,ei)=>{
+      const n=(dist[ep]||[])[i]||0;
+      if(!n)return "";
+      const mx=Math.max(...eps.map(e2=>Math.max(...((dist[e2]||Array(10).fill(0))),1)));
+      return `<div class="hseg" style="height:${(n/mx*80).toFixed(0)+4}px;background:${ec.good[ei]}" title="${esc(ep)}: ${n} 题"></div>`;
+    }).join("");
+    h2+=`<div class="hb"><div class="hstack">${stack||'<div style="height:2px"></div>'}</div><span class="hlbl">${bk[0].toFixed(1)}-${(bk[1]===1.01?"1.0":bk[1].toFixed(1))}</span></div>`;
+  });
+  h2+=`</div><div class="muted" style="font-size:11px;margin-top:6px">${eps.map((e,i)=>`<span style="color:${ec.good[i]}">█ ${esc(e)}</span>`).join("　")}</div></div>`;
+  // 3) 领域均分横条
+  const dm={};
+  RESULTS.forEach(r=>{if(r.score===null||r.score===undefined)return;
+    (dm[r.domain]=dm[r.domain]||{})[r.endpoint]=dm[r.domain][r.endpoint]||[];
+    dm[r.domain][r.endpoint].push(r.score)});
+  let h3=`<div class="chart-sec"><h3>🧭 领域平均得分</h3><div class="bars">`;
+  Object.entries(dm).forEach(([dom,m])=>{
+    const vals=eps.map(ep=>{const a=(m[ep]||[]);return a.length?a.reduce((x,y)=>x+y,0)/a.length:null});
+    const seg=vals.map((v,i)=>{
+      if(v==null)return "";
+      const col=(v>=0.85?ec.good[i]:(v>=0.5?ec.mid[i]:(v>0?ec.low[i]:ec.bad[i])));
+      return `<div class="bl-seg" style="width:${(v*100).toFixed(1)}%;background:${col};min-width:4px" title="${esc(eps[i])}: ${(v*100).toFixed(1)}%"></div>`;
+    }).join("");
+    h3+=`<div class="bar-line"><span class="bl-name">${esc(dom)}</span><div class="bl-track">${seg}</div>
+      <span class="bl-num">${vals.map(v=>v==null?"—":(v*100).toFixed(0)+"%").join(" / ")}</span></div>`;
+  });
+  h3+=`</div></div>`;
+  box.innerHTML=h1+h2+h3;
+  $("#chartCard").style.display="block";
+}
+function opsBarColor(n){
+  const good=["#22b877","#67dbe7","#aa8cff","#f3c96b","#ff9d66","#7fb3ff","#ff7bac","#a8e063","#f6d365","#e98bb8"];
+  const mid=["#c9d86b","#8fd3a7","#b3a7f7","#f0d078","#ffb46e","#a9c7ff","#ff9fbe","#c4e07e","#f8e085","#efb3d4"];
+  const low=["#e8a04c","#7cc8dd","#9f86f5","#e6c05a","#ff9a55","#87aef5","#f68fae","#b0cc6e","#eccd6e","#e5a2c9"];
+  const bad=["#d64550","#5fb3c6","#7e66d1","#cf9f3f","#e07b47","#6a8ed2","#d6708f","#93ab5c","#cfa74f","#cf86ad"];
+  const g=good.slice(0,n),m=mid.slice(0,n),l=low.slice(0,n),b=bad.slice(0,n);
+  while(g.length<n)g.push(good[g.length%good.length]);
+  while(m.length<n)m.push(mid[m.length%mid.length]);
+  while(l.length<n)l.push(low[l.length%low.length]);
+  while(b.length<n)b.push(bad[b.length%bad.length]);
+  return {good:g,mid:m,low:l,bad:b};
+}
+
+/* ---------- Heatmap ---------- */
+function heatRows(src){
+  src=src||RESULTS;
+  if(!src)return[];
+  const eps=[...new Set(RESULTS.map(r=>r.endpoint))];
+  const mode=$("#hmMode").value;
+  const dom=$("#hmDomain").value,diff=$("#hmDiff").value,search=$("#hmSearch").value.trim().toLowerCase();
+  const filter=r=>(!dom||r.domain===dom)&&(!diff||r.difficulty===diff)&&(!search||r.benchmark.toLowerCase().includes(search)||r.qid.toLowerCase().includes(search));
+  if(mode==="q"){
+    const byQ={};
+    src.forEach(r=>{if(!filter(r))return;(byQ[r.qid]=byQ[r.qid]||{q:r})[r.endpoint]=r});
+    return {mode:"q",eps,rows:Object.entries(byQ).map(([qid,m])=>{const q=m.q;return {qid,benchmark:q.benchmark,domain:q.domain,difficulty:q.difficulty,cells:eps.map(ep=>m[ep]||null)}})};
+  }
+  const agg={};
+  src.forEach(r=>{if(!filter(r))return;(agg[r.benchmark]=agg[r.benchmark]||{})[r.endpoint]=agg[r.benchmark][r.endpoint]||[];
+    agg[r.benchmark][r.endpoint].push(r.score)});
+  const rows=Object.entries(agg).map(([bm,m])=>({qid:bm,benchmark:bm,domain:"",difficulty:"",
+    cells:eps.map(ep=>{const a=(m[ep]||[]).filter(x=>x!==null&&x!==undefined);
+      return a.length?a.reduce((x,y)=>x+y,0)/a.length:null})}));
+  return {mode:"bm",eps,rows};
+}
+let PAGE=0;
+/* ---------- 格子矩阵热力图(骨架驱动: 行=轮次×端点, 列=题, 颜色=结果) ---------- */
+/* 热力图核心四原则:
+   R1 格子数量只由骨架决定(题数×端点×轮次), 永不由结果条数决定 → 不再“结束坍缩/中途少格”。
+   R2 一槽一状态: 每格 key=round|ep|qid, 单值类名(pass/part/fail/error/none/running/pending),
+      终态原地覆盖; 部分得分(0<score<1)单独一色 part, 格内还写小数。
+   R3 每条泳道(轮次×端点)恒 1 个蓝格 = 该泳道「第一个未完成格」(即已完成格子紧后面的那一格),
+      因此蓝格永远从左往右顺序推进, 蓝格前面不可能出现未完成格; 其余并发在途数只写行标签 `+N 在途`。
+      题号写在格子内部, 列序 = 骨架序 = 引擎派题序。
+   R4 状态变化命令式 patch 单格(不整表重建) → 进行中蓝格动画不随 3s 轮询重启 = 不闪烁。 */
+const CELL_TITLE={pass:"通过",fail:"失败",error:"错误",running:"进行中",queued:"并行处理中(也在跑)",none:"已答未评分",part:"部分得分",pending:"未完成"};
+/* 每行(轮次×端点)格子数上限: 超过 20 格换到下一行继续显示(2026-09-16 按用户要求) */
+const MX_PER_ROW=20;
+function mxGridStyle(n){
+  const cols=Math.min(MX_PER_ROW,Math.max(1,n|0));
+  return `grid-template-columns:repeat(${cols},var(--mx-size,38px))`;
+}
+function cellKey(rnd,ep,qid){return (rnd||1)+"|"+(ep||"")+"|"+(qid||"");}
+function cellStatusOf(key){
+  // 终态优先; 运行中额外套一层「严格顺序」遮罩(LIVE_VISIBLE = 蓝格之前的格子):
+  // 蓝格之后即使已判完也先显示未完成, 等前沿走到它再点亮 → 不会出现灰区里的绿格。
+  const c=CELLS[key];
+  const masked=HM_LIVE&&LIVE_VISIBLE.size>0&&!LIVE_VISIBLE.has(key);
+  if(!masked){
+    if(c===1)return "pass";
+    if(c===2)return "fail";
+    if(c===3)return "error";
+    if(c===4)return "none";
+    if(c===5)return "part";
+  }
+  if(RUNNING_CELLS.has(key))return "running";
+  if(QUEUE_CELLS.has(key))return "queued";   // 浅蓝「也在跑」: 紧挨前沿的并发在途格
+  return "pending";
+}
+// 蓝格之外的并发在途数 = 行标签 `+N 在途`(不单独占特殊格子)
+function laneQueueCount(rnd,ep){
+  const n=LANE_INFLIGHT[(rnd||1)+"|"+(ep||"")]||0;
+  return Math.max(0,n-1);
+}
+function natOrd(qid){const q=String(qid||""),m=q.match(/(\d+)$/);return m?[+m[1],q]:[Number.MAX_SAFE_INTEGER,q];}
+function matrixQList(){
+  let list;
+  if(SKEL&&SKEL.questions&&SKEL.questions.length)list=SKEL.questions;
+  else{
+    const byQ={},order=[];
+    (RESULTS||[]).forEach(r=>{if(!(r.qid in byQ)){byQ[r.qid]={qid:r.qid,benchmark:r.benchmark||"",difficulty:r.difficulty,domain:r.domain};order.push(r.qid)}});
+    list=order.map(k=>byQ[k]);
+  }
+  // 列序 = 骨架序(第 1..N 道) = 引擎派题序: 这样蓝格(进行中)严格跟在已完成格子后面往右推进。
+  // 2026-09-17: 旧实现按「qid 尾部数字」重排, 哈希题号(gsm8k-0bdcf439 之类)的显示序与派题序
+  // 完全无关 → 进行中蓝格看上去在随机格子里跳。只有拿不到骨架(旧运行降级)时才退回自然序。
+  if(SKEL&&SKEL.questions&&SKEL.questions.length)return list.slice();
+  return list.slice().sort((a,b)=>natOrd(a.qid)[0]-natOrd(b.qid)[0]||(a.qid<b.qid?-1:a.qid>b.qid?1:0));
+}
+function matrixEps(){
+  if(SKEL&&SKEL.endpoints&&SKEL.endpoints.length)return SKEL.endpoints;
+  return [...new Set((RESULTS||[]).map(r=>r.endpoint).filter(Boolean))];
+}
+// 当前热力图筛选(领域/难度/搜索)后的题序 —— 前沿判定与列渲染必须用同一份列表
+function matrixQListFiltered(){
+  const dom=$("#hmDomain")?$("#hmDomain").value:"",diff=$("#hmDiff")?$("#hmDiff").value:"",
+        kw=$("#hmSearch")?$("#hmSearch").value.trim().toLowerCase():"";
+  return matrixQList().filter(q=>
+    (!dom||q.domain===dom)&&(!diff||q.difficulty===diff)&&
+    (!kw||(q.qid+" "+(q.benchmark||"")).toLowerCase().includes(kw)));
+}
+function matrixRounds(){
+  return (SKEL&&SKEL.rounds)?SKEL.rounds:Math.max(1,...(RESULTS||[]).map(r=>r.round||1),1);
+}
+function livePseudoResults(){
+  const out=[];if(!SKEL)return out;
+  const qm={};SKEL.questions.forEach(q=>qm[q.qid]=q);
+  Object.keys(CELLS).forEach(k=>{
+    const m=k.split("|");const qid=m[2],ep=m[1],rnd=+m[0];const q=qm[qid];if(!q)return;
+    const c=CELLS[k];
+    out.push({qid,benchmark:q.benchmark||"",domain:q.domain||"",difficulty:q.difficulty||"medium",
+      endpoint:ep,round:rnd,
+      score:(typeof SCORES[k]==="number"?SCORES[k]:(c===1?1:c===2?0:null)),
+      error:(c===3?"live_error":null),finished:true});
+  });
+  // 进行中的前沿格: 表格模式(按题目)也要能看到「▶ 进行中」, 与矩阵蓝格语义一致
+  RUNNING_CELLS.forEach(k=>{
+    const m=k.split("|");const qid=m[2],ep=m[1],rnd=+m[0];const q=qm[qid];if(!q)return;
+    out.push({qid,benchmark:q.benchmark||"",domain:q.domain||"",difficulty:q.difficulty||"medium",
+      endpoint:ep,round:rnd,score:null,error:null,finished:false,running:true});
+  });
+  return out;
+}
+function bindMatrixCell(el,q,ep,st){
+  const key=el.dataset.key||"",rnd=(key.split("|")[0])||1,sc=SCORES[key];
+  const judged=CELLS[key]!==undefined;
+  // 提示里带上真实分数(含 0.1~0.9 的部分得分), 与首屏构建时的 title 保持一致
+  el.title=`${q.qid} · ${q.benchmark||""}/${q.difficulty||""} · R${rnd} · ${ep} · ${CELL_TITLE[st]||st}`
+    +((typeof sc==="number"&&st!=="pending")?` · 得分 ${sc.toFixed(2)}`:"")
+    +((judged&&st==="pending")?" · 已判完，等蓝格走到时点亮（运行中严格按顺序显示）":"");
+  el.onclick=null;delete el.dataset.qid;delete el.dataset.ep;delete el.dataset.bm;
+  if(st!=="pending"||judged){   // 已判完但还没点亮的格子照样可点开详情
+    el.dataset.qid=q.qid;el.dataset.ep=ep;el.dataset.bm=q.benchmark||"";
+    el.onclick=()=>openInspector(q.qid,ep,q.benchmark||"");
+  }
+}
+function renderMatrix(){
+  const dom=$("#hmDomain").value,diff=$("#hmDiff").value,kw=$("#hmSearch").value.trim().toLowerCase();
+  const qs=matrixQListFiltered();
+  const eps=matrixEps(),rnds=matrixRounds();
+  const sig=[HM_LIVE?(SKEL?"s"+SKEL.run_id:"s0"):"h",$("#hmMode").value,dom,diff,kw,qs.length,eps.join(","),rnds].join("|");
+  const isBuild=(sig!==MATX_SIG);
+  MATX_SIG=sig;
+  // 统计始终从骨架×单槽状态推 → 算出来的数与格子永远对得上
+  const cnt={pass:0,fail:0,error:0,running:0,queued:0,none:0,part:0,pending:0};let total=0;
+  for(let rnd=1;rnd<=rnds;rnd++)for(const ep of eps)for(const q of qs){
+    cnt[cellStatusOf(cellKey(rnd,ep,q.qid))]++;total++;
+  }
+  const legend=`<div class="matrix-legend">
+    <span><i class="cell" style="background:var(--ok)"></i>通过(满分) ${cnt.pass}</span>
+    <span><i class="cell" style="background:linear-gradient(135deg,#f0b429 50%,#f8dc9a 50%)"></i>部分得分(0.1~0.9) ${cnt.part}</span>
+    <span><i class="cell" style="background:linear-gradient(135deg,#e06060 50%,#f8baba 50%)"></i>失败(0 分) ${cnt.fail}</span>
+    <span><i class="cell" style="background:var(--err)"></i>错误 ${cnt.error}</span>
+    <span><i class="cell" style="background:var(--run)"></i>进行中(蓝格=当前前沿) ${cnt.running}</span>
+    ${cnt.queued?`<span><i class="cell" style="background:rgba(37,99,235,.35)"></i>也在跑(并发) ${cnt.queued}</span>`:""}
+    <span><i class="cell" style="background:#d4a017"></i>已答未评分 ${cnt.none}</span>
+    <span><i class="cell" style="background:var(--panel-2);border:1px dashed var(--line)"></i>未完成 ${cnt.pending}</span>
+    <span class="muted-2">共 ${total} 格（${qs.length} 题 × ${eps.length} 端点 × ${rnds} 轮） · 格内 Q 编号=第几道题 · <b>橙格/小数(如 0.6)=该题部分得分</b> · 运行中蓝格之后一律留灰，蓝格走到才点亮 · 每行最多 ${MX_PER_ROW} 格，超出自动换行 · 点格子看详情</span></div>`;
+  // 格内内容: 题号(Q01..) + 部分得分(0.1~0.9 才显示小数, 通过/失败的 1.0/0.0 交给颜色表达)
+  const qlab=i=>{const n=i+1;return n<100?("Q"+String(n).padStart(2,"0")):("Q"+n)};
+  const fsOf=s=>s.length<=3?"10px":(s.length===4?"9px":"8px");
+  const labOf={};qs.forEach((q,i)=>{labOf[q.qid]=qlab(i)});
+  const cellInner=(qid,sc)=>{
+    const lab=labOf[qid]||"";
+    const s=(typeof sc==="number"&&sc>0&&sc<1)?`<span class="sc">${sc.toFixed(1)}</span>`:"";
+    return `<span class="qx" style="font-size:${fsOf(lab)}">${lab}</span>${s}`;
+  };
+  const cellTip=(q,ep,rnd,st,sc)=>`${esc(q.qid)} · ${esc(q.benchmark||"")}/${esc(q.difficulty||"")} · R${rnd} · ${esc(ep)}`
+    + ` · ${CELL_TITLE[st]}${(typeof sc==="number")?` · 得分 ${sc.toFixed(2)}`:""}`;
+  if(isBuild){
+    MATR_CELL={};
+    let html="";
+    // 题号写在每个格子内部(不再单独占一行表头): 题号永远跟着自己的格子, 换行/滚动都不会错位。
+    // 题号编号 = 骨架序(第 1..N 道) = 引擎派题序。
+    const gridStyle=mxGridStyle(qs.length);
+    for(let rnd=1;rnd<=rnds;rnd++){
+      for(const ep of eps){
+        let cells="",rowPass=0,rowPart=0,rowFail=0;
+        const rowQueue=laneQueueCount(rnd,ep); // 蓝格之外并发在途数 → 只写行标签, 不占特殊格
+        qs.forEach(q=>{
+          const key=cellKey(rnd,ep,q.qid),st=cellStatusOf(key),sc=SCORES[key];
+          if(st==="pass")rowPass++;else if(st==="part")rowPart++;else if(st==="fail"||st==="error")rowFail++;
+          // 运行中被「严格顺序」遮住的格子不提前泄露分数(题号照常显示)
+          const shown=(st==="pending")?undefined:sc;
+          cells+=`<div class="matrix-cell ${st}" data-key="${esc(key)}" data-st="${st}" data-sc="${typeof sc==="number"?sc:""}" title="${cellTip(q,ep,rnd,st,shown)}">`
+               + `${cellInner(q.qid,shown)}</div>`;
+        });
+        const rlab=(rnds>1?`R${rnd}·`:"")+(ep||"");
+        let stat="";
+        // 满分/已判定(部分得分计入已判定, 但不算满分)
+        const judged=rowPass+rowPart+rowFail;
+        if(judged)stat=`<div class="mx-cnt">满分 ${rowPass}/${judged}${rowPart?` · 部分 ${rowPart}`:""}</div>`;
+        if(rowQueue)stat+=`<div class="mx-cnt">+${rowQueue} 在途</div>`;
+        html+=`<div class="mx-round"><span class="mx-rlab" title="${rnds>1?"第"+rnd+"轮 · ":""}${esc(ep)}">${esc(rlab)}${stat}</span><div class="mx-cells" style="${gridStyle}">${cells}</div></div>`;
+      }
+    }
+    const box=$("#heatmapBox");
+    box.innerHTML=`<div class="tscroll">${legend.replace('class="matrix-legend"','id="hmLegend" class="matrix-legend"')}${html}</div>`;
+    box.querySelectorAll(".matrix-cell[data-key]").forEach(el=>{
+      MATR_CELL[el.dataset.key]=el;
+      const m=el.dataset.key.split("|");const q={qid:m[2],benchmark:el.dataset.bm||"",difficulty:"medium"};
+      bindMatrixCell(el,q,m[1],el.dataset.st);
+    });
+  }else{
+    const le=document.getElementById("hmLegend");
+    if(le&&le.outerHTML!==legend.replace('class="matrix-legend"','id="hmLegend" class="matrix-legend"'))le.outerHTML=legend.replace('class="matrix-legend"','id="hmLegend" class="matrix-legend"');
+    // R4: 只 patch 有变化的格子, 不重建 DOM → 动画不中断、不闪烁。
+    // 若骨架键在 DOM 里缺失, 或引用已脱离文档(切到「按题目/按 Benchmark」表格模式时
+    // #heatmapBox 被整块替换过 → MATR_CELL 里全是游离节点), 必须整表重建,
+    // 否则切回「格子矩阵」会一直显示上一次的表格(2026-09-16 修复)。
+    for(let rnd=1;rnd<=rnds;rnd++)for(const ep of eps)for(const q of qs){
+      const key=cellKey(rnd,ep,q.qid);
+      if(!MATR_CELL[key]||!MATR_CELL[key].isConnected){MATX_SIG="";renderMatrix();return}
+      const st=cellStatusOf(key),el=MATR_CELL[key],sc=SCORES[key];
+      const scKey=(typeof sc==="number")?String(sc):"";
+      if(el.dataset.st===st&&el.dataset.sc===scKey)continue;
+      const shown=(st==="pending")?undefined:sc;
+      el.className="matrix-cell "+st;el.dataset.st=st;el.dataset.sc=scKey;
+      el.innerHTML=cellInner(q.qid,shown);
+      bindMatrixCell(el,q,ep,st);
+    }
+  }
+}
+function renderHeatmap(reset=true){
+  if(reset)PAGE=0;
+  // 运行中(实时): 结果集可能是 null → 用骨架+已判定格子合成(仅用于表格模式/领域下拉)
+  const src=RESULTS||(HM_LIVE?livePseudoResults():null);
+  if($("#hmMode").value==="m"){renderMatrix();return}
+  if(!src){$("#heatmapBox").innerHTML=`<div class="empty">暂无数据 · 请先运行评测或从历史加载</div>`;return}
+  const domSel=$("#hmDomain");domSel.innerHTML=`<option value="">全部</option>`;
+  [...new Set(src.map(r=>r.domain))].sort().forEach(d=>{
+    const o=document.createElement("option");o.value=d;o.textContent=d;domSel.appendChild(o)});
+  const h=heatRows(src);
+  const PER=400;
+  const rows=h.rows.slice(PAGE*PER,(PAGE+1)*PER);
+  let html=`<table><tr><th style="min-width:170px">${h.mode==="q"?"题目":"Benchmark"}</th>
+    <th>难度</th>`+h.eps.map(e=>`<th>${esc(e)}</th>`).join("")+`</tr>`;
+  rows.forEach(r=>{
+    html+=`<tr><td style="text-align:left" title="${esc(r.benchmark)}">${esc(r.qid.slice(0,44))}</td>
+      <td>${esc(r.difficulty||"")}</td>`;
+    r.cells.forEach((c,i)=>{
+      if(!c){html+=`<td class="cell score-none">—</td>`;return}
+      if(c.running){html+=`<td class="cell score-run" data-qid="${esc(r.qid)}" data-ep="${esc(h.eps[i])}" data-bm="${esc(r.benchmark)}" title="进行中">▶</td>`;return}
+      const v=c.score;
+      let cls;
+      if(c.error)cls="score-err err-diag";
+      else if(v===null||v===undefined)cls="score-none";
+      else{cls=colorsFor(v);if(cls==="score-bad")cls+=" fail-diag"}
+      const txt=c.error?"E":(v===null||v===undefined?"—":(Math.round(v*100)/100).toFixed(2));
+      html+=`<td class="cell ${cls}" data-qid="${esc(r.qid)}" data-ep="${esc(h.eps[i])}" data-bm="${esc(r.benchmark)}">${txt}</td>`;
+    });
+    html+=`</tr>`;
+  });
+  html+=`</table>`;
+  $("#heatmapBox").innerHTML=`<div class="tscroll">${html}</div>`;
+  const total=h.rows.length;
+  const pager=document.createElement("div");pager.className="pager";
+  if(PAGE>0)pager.innerHTML+=`<button id="prevPage">← 上一页</button>`;
+  if((PAGE+1)*PER<total)pager.innerHTML+=`<button id="nextPage">下一页（${total-(PAGE+1)*PER} 余）</button>`;
+  if(total>PER)pager.insertAdjacentHTML("beforeend",`<span class="muted" style="align-self:center">第 ${PAGE+1}/${Math.ceil(total/PER)} 页 · 共 ${total} 行</span>`);
+  $("#heatmapBox").appendChild(pager);
+  if(PAGE>0)$("#prevPage").onclick=()=>{PAGE--;renderHeatmap(false)};
+  const np=$("#nextPage");if(np)np.onclick=()=>{PAGE++;renderHeatmap(false)};
+  $("#heatmapBox").querySelectorAll("td.cell").forEach(td=>{
+    td.onclick=()=>openInspector(td.dataset.qid,td.dataset.ep,td.dataset.bm);
+  });
+}
+["#hmMode","#hmDomain","#hmDiff"].forEach(s=>$(s).addEventListener("change",()=>renderHeatmap()));
+$("#hmSearch").addEventListener("input",()=>renderHeatmap());
+$("#hmReset").onclick=()=>{$("#hmDomain").value="";$("#hmDiff").value="";$("#hmSearch").value="";renderHeatmap()};
+
+/* ---------- Inspector ---------- */
+function sqCheckHtml(sc){
+  /* SQL 执行判分明细: 四项比对结果, 展示“为什么 0 分”。sc=engine 的 sql_check dict */
+  const c=sc.checks||{};
+  const mark=ok=>ok?'<span style="color:var(--ok)">✓</span>':'<span style="color:var(--fail)">✗</span>';
+  const diffs=(sc.actual&&sc.actual.first_row_diffs)||[];
+  const parts=[];
+  parts.push(`<div style="margin:6px 0;font-size:12px;line-height:1.7"><b>SQL 执行比对</b> `+
+    `<span class="muted">(引擎: ${esc(sc.method||"sqlite_exec")}${sc.sql?` · 耗时 ${sc.actual&&sc.actual.elapsed!=null?sc.actual.elapsed+"s":""}`:""})</span></div>`);
+  if(sc.error){parts.push(`<div class="err-text" style="font-size:12px">❌ ${esc(sc.error)}</div>`);}
+  else{
+    parts.push(`<div style="font-size:12px">${mark(c.row_count_match)} 行数 ${sc.actual&&sc.actual.row_count!=null?sc.actual.row_count:"?"} / 期望 ${sc.expected?sc.expected.row_count:"?"} &nbsp;${mark(c.column_count_match)} 列数 ${sc.actual&&sc.actual.columns?sc.actual.columns.length:"?"} / ${sc.expected?sc.expected.columns.length:"?"} &nbsp;${mark(c.column_names_match)} 列名${(sc.actual&&(sc.actual.missing_columns&&sc.actual.missing_columns.length||sc.actual.extra_columns&&sc.actual.extra_columns.length))?`（缺:${esc(sc.actual.missing_columns.join("/"))} 多:${esc(sc.actual.extra_columns.join("/"))}）`:""} &nbsp;${mark(c.first_row_match)} 首行</div>`);
+    if(diffs.length)parts.push(`<div style="font-size:12px;color:var(--muted)">首行差异: ${diffs.map(d=>`${esc(d.column)} 期望=${esc(String(d.expected))} 实际=${esc(String(d.actual))}`).join(" · ")}</div>`);
+  }
+  if(sc.judge_llm!=null)parts.push(`<div class="muted" style="font-size:12px">LLM 评委(第二意见): ${(+sc.judge_llm).toFixed(1)}/10</div>`);
+  if(sc.dialect_note)parts.push(`<div class="muted" style="font-size:11px;margin-top:2px">${esc(sc.dialect_note)}</div>`);
+  return `<div style="border:1px dashed var(--line);border-radius:6px;padding:6px 8px;margin-top:6px">${parts.join("")}</div>`;
+}
+async function openInspector(qid,ep,bm){
+  const d=$("#drawer");d.classList.add("open");
+  const box=$("#drawerBody");
+  box.innerHTML=`<span class="spin"></span> 加载中…`;
+  let detail=null;
+  try{const r=await api("/api/quality/question?qid="+encodeURIComponent(qid));detail=r.question}catch(e){}
+  let recs=(RESULTS||[]).filter(r=>r.qid===qid&&(!ep||r.endpoint===ep));
+  // 实时/部分场景下 recs 可能为空或不带 output → 从磁盘重拉全量结果, 保证「答案对比 + SQL 执行比对」始终可用
+  const rid=RUNID||RES_META.run_id||null;
+  if(rid && (recs.length===0 || recs.every(r=>r.output===undefined && !r.error))){
+    try{
+      const rr=await api("/api/quality/results?run_id="+rid);
+      const fresh=(rr.results||[]).filter(r=>r.qid===qid&&(!ep||r.endpoint===ep));
+      if(fresh.length)recs=fresh;
+    }catch(e){/* 磁盘也没有就按无输出处理 */}
+  }
+  let rows=recs.map(r=>{
+    const v=r.score;
+    const col=v===null?"var(--muted-2)":v>=0.999?"var(--accent)":v>=0.5?"var(--amber)":"var(--red)";
+    return `<tr><td>${esc(r.endpoint)}</td><td style="color:${col};font-weight:700">${v===null?"—":v.toFixed(2)}</td>
+      <td>${r.error?`<span class="err-text">${esc(r.error)}</span>`:(r.latency?r.latency.toFixed(1)+"s":"")}</td></tr>`}).join("");
+  const q=detail;
+  const ansStr=q?(typeof q.answer==="string"?q.answer:JSON.stringify(q.answer)):"";
+  /* 🆚 答案对比: 模型输出 vs 正确答案 并排 */
+  const doneRecs=recs.filter(r=>!r.running);
+  const withOut=doneRecs.filter(r=>r.output!==undefined);
+  let cmpHtml="";
+  if(withOut.length){
+    cmpHtml=withOut.slice(0,10).map(r=>{
+      const v=r.score;
+      const bd=r.error?`<span class="badge badge-err">错误</span>`
+        :(v===null||v===undefined?`<span class="badge badge-pend">未评分</span>`
+        :(v>=1?`<span class="badge badge-pass">通过 ${(+v).toFixed(2)}</span>`
+        :(v>0?`<span class="badge badge-part">部分得分 ${(+v).toFixed(2)}</span>`
+        :`<span class="badge badge-fail">失败 ${(+v).toFixed(2)}</span>`)));
+      const frame=r.error||(v===null||v===undefined)?"":(v>=1?"cmp-ok":(v>0?"cmp-part":"cmp-bad"));
+      const sqlNote=(r.sql_check)?sqCheckHtml(r.sql_check):"";
+      return `<div class="cmp-item ${frame}">
+        <div class="cmp-head"><b>${esc(r.endpoint||"")}</b>${((r.round||1)>1)?` · 第${esc(String(r.round))}轮`:""} ${bd}${r.latency?` <span class="muted" style="font-size:11px">${(+r.latency).toFixed(1)}s</span>`:""}${r.score_method?` <span class="muted" style="font-size:10px">判分: ${esc(r.score_method)}</span>`:""}</div>
+        <div class="cmp-grid">
+          <div><div class="cmp-lab">🤖 模型输出</div><pre class="trace-dark">${esc(String(r.output||"(空)").slice(0,1600))}</pre></div>
+          <div><div class="cmp-lab">✅ 正确答案</div><pre>${esc(String(ansStr).slice(0,1600))||"(无参考答案)"}</pre></div>
+        </div>
+        ${r.error?`<div class="err-text" style="margin-top:4px">${esc(r.error)}</div>`:""}
+        ${sqlNote}
+      </div>`;
+    }).join("");
+  }else if(recs.length){
+    cmpHtml=`<div class="muted" style="padding:6px 0;font-size:12px">模型输出将在该题评测完成后显示（运行中实时面板只报分数/耗时）</div>`;
+  }
+  const tiers=(q&&q.tiers&&q.tiers.length)?TIERS_ORDER.filter(t=>q.tiers.includes(t)).map(t=>
+    `<span class="tier-badge on">${t}</span>`).join(""):"<span class='muted'>（未收录于任何档位）</span>";
+  box.innerHTML=`
+    <h3>${esc(qid)}</h3>
+    <div class="sub">${esc(bm||q?.benchmark||"")} · ${esc(q?.domain||"")} · ${esc(q?.difficulty||"")} · ${esc(q?.lang||"")} · ${esc(q?.judge?.type||"")}</div>
+    <div style="margin-top:8px"><label style="margin:0 0 2px">所属档位（Tier）</label><div>${tiers}</div></div>
+    ${rows?`<div style="margin-top:10px"><table><tr><th>端点</th><th>得分</th><th>延迟/错误</th></tr>${rows}</table></div>`:""}
+    ${q?`<label>题目 (${q.est_prompt_tok||"?"} tok est)</label><pre>${esc(q.prompt)}</pre>`:""}
+    ${q?`<label>评分方式</label><pre>${esc(JSON.stringify(q.judge))}</pre>`:""}
+    ${cmpHtml?`<label>🆚 答案对比（模型输出 vs 正确答案${withOut.length>10?"，前 10 条":""}）</label>${cmpHtml}`:""}
+    ${recs[0]&&!recs[0].running?`<label>推理链</label><pre class="trace-dark">${esc(recs[0].reasoning||"(无)")}</pre>`:""}
+    ${recs[0]?.tool_calls&&recs[0].tool_calls!=="[]"?`<label>工具调用</label><pre class="trace-dark">${esc(recs[0].tool_calls)}</pre>`:""}
+  `;
+}
+$("#drawerClose").onclick=()=>$("#drawer").classList.remove("open");
+
+/* ---------- 题库浏览（领域→类别→题目） ---------- */
+async function renderBrowse(){
+  const left=$("#browseLeft");
+  if(!META||!META.benchmarks){left.innerHTML=`<div class="empty">元数据未就绪（题库浏览需要 /meta.benchmarks，请刷新页面）</div>`;return}
+  const selDomain=BROWSE.domain||"";
+  let html="";
+  Object.entries(META.benchmarks).forEach(([dom,items])=>{
+    const total=items.reduce((a,b)=>a+b.count,0);
+    html+=`<div class="bdom ${selDomain===dom?"on":""}" data-dom="${esc(dom)}">
+      <div class="bdom-head"><span>${esc(dom)}</span><span class="n">${total} 题</span></div>
+      <div class="bchips">${items.slice(0,12).map(b=>
+        `<span class="bchip ${BROWSE.domain===dom&&BROWSE.benchmark===b.benchmark?"on":""}" data-dom="${esc(dom)}" data-bm="${esc(b.benchmark)}" title="${esc(b.benchmark)} · 共 ${b.count} 题 · ${esc(JSON.stringify(b.by_diff))}">${esc(b.benchmark)} <i>${b.count}</i></span>`).join("")}
+      ${items.length>12?`<span class="muted" style="font-size:10px">+${items.length-12} 类别…</span>`:""}</div></div>`;
+  });
+  left.innerHTML=html;
+  left.querySelectorAll(".bdom").forEach(el=>el.onclick=e=>{
+    if(e.target.classList.contains("bchip"))return;
+    const dom=el.dataset.dom;
+    BROWSE.domain=dom;BROWSE.benchmark="";BROWSE.search="";BROWSE.page=0;
+    renderBrowse();loadQuestions();
+  });
+  left.querySelectorAll(".bchip").forEach(el=>el.onclick=e=>{
+    e.stopPropagation();
+    BROWSE.domain=el.dataset.dom;BROWSE.benchmark=el.dataset.bm;BROWSE.search="";BROWSE.page=0;
+    renderBrowse();loadQuestions();
+  });
+}
+async function loadQuestions(){
+  const right=$("#browseRight");
+  const key=BROWSE.domain+"|"+BROWSE.benchmark;
+  right.innerHTML=`<div class="empty"><span class="spin"></span> 加载题目…</div>`;
+  let data=BROWSE_CACHE[key];
+  if(!data){
+    try{
+      const url="/api/quality/questions?domain="+encodeURIComponent(BROWSE.domain||"")+
+        (BROWSE.benchmark?"&benchmark="+encodeURIComponent(BROWSE.benchmark):"")+"&with_tiers=true&limit=6000";
+      const r=await api(url);
+      data={items:r.items||[],n:r.n||0};
+      BROWSE_CACHE[key]=data;
+    }catch(e){
+      right.innerHTML=`<div class="err-text" style="padding:20px">加载失败：${esc(e.message)}</div>`;return
+    }
+  }
+  BROWSE.all=data.items;BROWSE.n=data.n;
+  renderQuestionList();
+}
+function renderQuestionList(){
+  const right=$("#browseRight");
+  const kw=BROWSE.search.trim().toLowerCase();
+  const filt=BROWSE.all.filter(q=>{
+    if(BROWSE.tier&&!(q.tiers||[]).includes(BROWSE.tier))return false;
+    if(!kw)return true;
+    const s=(q.id+" "+q.benchmark+" "+q.domain+" "+(q.judge||"")).toLowerCase();
+    return s.includes(kw);
+  });
+  const per=BROWSE.per;
+  const pages=Math.max(1,Math.ceil(filt.length/per));
+  if(BROWSE.page>=pages)BROWSE.page=pages-1;
+  const rows=filt.slice(BROWSE.page*per,(BROWSE.page+1)*per);
+  const tiersSel=TIERS_ORDER.map(t=>`<span class="tier-badge ${BROWSE.tier===t?"on":""}" data-tier="${t}" style="cursor:pointer">${t}</span>`).join("");
+  let html=`<div class="browse-tools">
+    <input type="text" id="bsearch" placeholder="搜索 qid / benchmark…" value="${esc(BROWSE.search)}">
+    <span class="muted" style="font-size:12px">档位过滤：</span>${tiersSel}
+    <button id="bclear" style="padding:4px 10px">清空</button>
+    <span class="muted" style="margin-left:auto">共 ${filt.length} 题 / 领域 ${esc(BROWSE.domain||"")}${BROWSE.benchmark?" / 类别 "+esc(BROWSE.benchmark):""}</span>
+  </div>`;
+  if(!rows.length){html+=`<div class="empty">无匹配题目</div>`}
+  else{
+    html+=`<div class="qlist">`;
+    rows.forEach(q=>{
+      const tiers=(q.tiers||[]).length?TIERS_ORDER.filter(t=>q.tiers.includes(t)).map(t=>`<span class="tier-badge on">${t}</span>`).join(""):"<span class='muted' style='font-size:11px'>—</span>";
+      const plen=(q.prompt||"").length;
+      html+=`<div class="qcard" data-qid="${esc(q.id)}">
+        <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+          <span class="qid">${esc(q.id)}</span>
+          <span class="lv-bm" title="${esc(q.benchmark)}">${esc(q.benchmark)}</span>
+          <span class="diff-badge diff-${esc(q.difficulty||"medium")}">${esc(q.difficulty||"")}</span>
+          <span class="muted" style="font-size:11px">${esc(q.judge||"")}</span>
+          <span style="margin-left:auto">${tiers}</span>
+        </div>
+        <div class="muted" style="font-size:12px;margin-top:4px">${esc((q.prompt||"").slice(0,90))}${plen>90?"…":""}</div>
+      </div>`;
+    });
+    html+=`</div>`;
+    html+=`<div class="pager">`;
+    if(BROWSE.page>0)html+=`<button id="bprev">← 上一页</button>`;
+    if((BROWSE.page+1)*per<filt.length)html+=`<button id="bnext">下一页（${filt.length-(BROWSE.page+1)*per} 余）</button>`;
+    html+=`<span class="muted" style="align-self:center">第 ${BROWSE.page+1}/${pages} 页</span></div>`;
+  }
+  right.innerHTML=html;
+  const bs=$("#bsearch");
+  bs&&(bs.oninput=e=>{BROWSE.search=e.target.value;BROWSE.page=0;renderQuestionList()});
+  right.querySelectorAll(".tier-badge[data-tier]").forEach(el=>el.onclick=()=>{
+    BROWSE.tier=BROWSE.tier===el.dataset.tier?"":el.dataset.tier;BROWSE.page=0;renderQuestionList()});
+  const bc=$("#bclear");bc&&(bc.onclick=()=>{BROWSE.search="";BROWSE.tier="";BROWSE.page=0;renderQuestionList()});
+  const bp=$("#bprev");bp&&(bp.onclick=()=>{BROWSE.page--;renderQuestionList()});
+  const bn=$("#bnext");bn&&(bn.onclick=()=>{BROWSE.page++;renderQuestionList()});
+  right.querySelectorAll(".qcard[data-qid]").forEach(cd=>cd.onclick=()=>openInspector(cd.dataset.qid,"",""));
+}
+$("#browseRefresh").onclick=()=>{
+  BROWSE_CACHE={};
+  const keep={...BROWSE};delete keep.all;delete keep.items;
+  Object.assign(BROWSE,keep);
+  loadQuestions();
+};
+
+/* ---------- History ---------- */
+async function loadHistory(){
+  try{
+    const h=await api("/api/quality/history");
+    HIST_CACHE={};h.runs.forEach(r=>HIST_CACHE[r.run_id]=r);
+    const resumable=h.runs.filter(canResumeRun);
+    const rb=$("#resumeMainBtn");if(rb){rb.disabled=resumable.length===0;
+      rb.textContent=resumable.length?`⏯ 断点续测 (${resumable.length})`:"⏯ 断点续测";}
+    const box=$("#historyBox");box.innerHTML="";
+    if(!h.runs.length){box.innerHTML=`<div class="empty">暂无记录</div>`;return}
+    box.innerHTML=h.runs.map(r=>{
+        const epsN=(r.meta.endpoints||[]).length||1;
+        const expect=(r.meta.n||0)*(r.meta.rounds||1)*epsN;
+        const canResume=canResumeRun(r);
+        const dt=new Date((r.meta.started||0)*1000);
+        const p2=x=>String(x).padStart(2,"0");
+        const shortTime=`${dt.getMonth()+1}/${dt.getDate()} ${p2(dt.getHours())}:${p2(dt.getMinutes())}`;
+        return `<div class="hist-item">
+          <span class="hist-id">#${r.run_id}</span>
+          ${(r.meta.resume_count||0)>0?`<span class="hist-chip muted" title="已续跑 ${r.meta.resume_count} 次">↻${r.meta.resume_count}</span>`:""}
+          <span class="hist-chip" title="档位">${esc(r.meta.tier||"")}</span>
+          <span class="hist-chip" title="题目数">${r.meta.n??""} 题</span>
+          <span class="hist-chip" title="完成/期望 题轮×端点">${r.n_done??""}${canResume?`<span class="muted">/${expect}</span>`:""}</span>
+          ${stBadge(r.status)}
+          <span class="hist-eps" title="端点">${esc((r.meta.endpoints||[]).map(e=>e.name).join(", "))}</span>
+          <span class="hist-time" title="开始时间">${shortTime}</span>
+          <span class="hist-ops">
+            <button data-rid="${r.run_id}" style="padding:3px 10px">查看</button>
+            ${canResume?`<button class="hist-resume" data-rsrid="${r.run_id}" title="断点续测: 自动跳过已完成题轮, 只测剩余部分(参数沿用原运行)">▶ 续跑</button>`:""}
+            <button class="hist-del" data-delrid="${r.run_id}" title="删除该条历史记录（元数据+结果文件）">🗑</button>
+          </span>
+        </div>`}).join("");
+    box.querySelectorAll("button[data-rid]").forEach(b=>b.onclick=()=>{
+      setStatus("status-idle","加载历史…");loadResults(+b.dataset.rid)});
+    box.querySelectorAll("button[data-rsrid]").forEach(b=>b.onclick=()=>resumeRun(HIST_CACHE[+b.dataset.rsrid]));
+    box.querySelectorAll("button[data-delrid]").forEach(b=>b.onclick=async()=>{
+      const rid=+b.dataset.delrid;
+      if(!confirm(`确定删除历史记录 #${rid}？（元数据与结果文件将永久移除，不可恢复）`))return;
+      try{
+        await api("/api/quality/history/"+rid,{method:"DELETE"});
+        if(RUNID===rid){RESULTS=null;RES_META=null;RUNID=null;
+          $("#statsCard").style.display="none";$("#chartCard").style.display="none";
+          $("#heatmapBox").innerHTML=`<div class="empty">暂无数据 · 请先运行评测或从历史加载</div>`;}
+        setStatus("status-idle","已删除历史记录 #"+rid);
+        loadHistory();
+      }catch(e){alert("删除失败: "+e.message)}
+    });
+  }catch(e){$("#historyBox").innerHTML=`<span class="err-text">加载失败</span>`}
+}
+/* ---------- 断点续测: 选择一条未完成的运行, 自动跳过已完成题轮继续测 ---------- */
+function canResumeRun(r){
+  if(!r||r.status==="running")return false;
+  const m=r.meta||{};
+  const epsN=(m.endpoints||[]).length||1;
+  const expect=(m.n||0)*(m.rounds||1)*epsN;
+  return (m.n||0)>0&&(r.n_done??0)<expect;
+}
+async function resumeLatest(){
+  if($("#runBtn").disabled){alert("评测正在运行中");return}
+  const list=Object.values(HIST_CACHE).filter(canResumeRun);
+  if(!list.length){alert("没有可续跑的未完成运行\n（历史里没有中断/未跑完的记录，请点「🆕 新测试」开始新评测）");return}
+  const rec=list[0];const m=rec.meta||{};
+  if(list.length>1){
+    const top=list.slice(0,3).map(x=>`  #${x.run_id} ${x.meta.tier||""} ${x.n_done||0}/${(x.meta.n||0)*(x.meta.rounds||1)*((x.meta.endpoints||[]).length||1)} (${x.status})`).join("\n");
+    if(!confirm(`发现 ${list.length} 条未完成的运行（最近的几条）：\n${top}\n\n确定 = 续跑最近的 #${rec.run_id}\n（想指定其他记录，请点历史行内的「▶ 续跑」）`))return;
+  }
+  await resumeRun(rec);
+}
+async function resumeRun(rec){
+  if(!rec)return;
+  if($("#runBtn").disabled){alert("评测正在运行中, 请先停止或等待完成");return}
+  const m=rec.meta||{};
+  const epsN=(m.endpoints||[]).length||1;
+  const expect=(m.n||0)*(m.rounds||1)*epsN;
+  const cur=(loadCfg()||{}).eps||[];
+  const eps=(m.endpoints||[]).map(e=>{
+    const c=cur.find(x=>(x.base_url||"").replace(/\/+$/,"")===(e.base_url||"").replace(/\/+$/,""))||{};
+    return {name:e.name,base_url:e.base_url,model:e.model,
+      thinking:(e.thinking!==undefined?!!e.thinking:!!c.thinking),api_key:c.api_key||null};
+  });
+  if(!eps.length){alert("原运行缺少端点信息, 无法续跑");return}
+  let sj=m.subjective_judge||null;
+  // 2026-09-14: SQL 判分已改为真实执行比对, 续跑不再强制启用评委。
+  // 原运行带了评委就沿用; 没带也不拦截(司判层会自动用 SQLite 执行判分)。
+  if(!confirm(`断点续测 · 运行 #${rec.run_id}（${m.tier||""}）\n`+
+    `${m.n} 题 × ${m.rounds||1} 轮 × ${epsN} 端点 = 期望 ${expect} 条, 已完成 ${rec.n_done||0} 条\n`+
+    `将自动跳过已完成题轮, 只测剩余约 ${Math.max(0,expect-(rec.n_done||0))} 条。\n`+
+    `采样口径与评测参数沿用原运行; 端点 API Key 按当前界面配置匹配。\n\n继续?`))return;
+  setStatus("status-run","续跑启动中…");
+  let r;
+  try{
+    r=await api("/api/quality/run",{method:"POST",headers:{"Content-Type":"application/json"},
+      body:JSON.stringify({tier:m.tier,endpoints:eps,
+        concurrency:m.concurrency||+$("#concurrency").value||2,
+        subjective_judge:sj,sample_n:null,
+        rounds:m.rounds||1,max_tokens:m.max_tokens||2048,
+        temperature:m.temperature!=null?m.temperature:0.1,
+        timeout:m.timeout||300,retries:m.retries!=null?m.retries:0,
+        difficulty_filter:m.difficulty_filter||null,
+        resume_run_id:rec.run_id})});
+  }catch(e){setStatus("status-err","续跑失败");alert("续跑失败: "+e.message);return}
+  RUNID=rec.run_id;RESULTS=null;
+  RES_META={status:"running",partial:true,total:0};
+  resetHM();
+  $("#statsCard").style.display="none";$("#chartCard").style.display="none";
+  LIVE_PREV=new Set();
+  $("#liveCard").style.display="block";$("#hmLiveTag").style.display="inline-block";
+  $("#runBtn").disabled=true;$("#cancelBtn").disabled=false;
+  setStatus("status-run",`续跑中 · 剩余 ${r.remaining_rounds!=null?r.remaining_rounds:"?"}/${r.total_rounds!=null?r.total_rounds:"?"} 题轮 · 已完成结果保留`);
+  $("#heatmapBox").innerHTML=`<div class="empty">续跑启动中, 正在合并已完成结果…</div>`;
+  // 已完成结果先铺进实时累积表: 热力图保留全量视野, 新结果在其上继续点亮
+  try{
+    const rr=await api("/api/quality/results?run_id="+rec.run_id);
+    (rr.results||[]).forEach(x=>{
+      const _c=x.error?(String(x.error)==="cancelled"?null:3):(x.score===null||x.score===undefined?(x.output!==undefined?4:null):(x.score>=1?1:(x.score>0?5:2)));
+      const _k=cellKey(x.round||1,x.endpoint,x.qid);
+      if(_c)CELLS[_k]=_c;
+      if(typeof x.score==="number")SCORES[_k]=x.score;
+    });
+  }catch(e){/* 无旧结果文件按全新处理 */}
+  if(pollTimer)clearTimeout(pollTimer);
+  poll();
+  loadHistory();
+}
+function stBadge(s){
+  const m={running:"运行中",cancelled:"已停止",done:"完成",error:"出错"};
+  const c={running:"status-run",cancelled:"status-err",done:"status-done",error:"status-err"};
+  return `<span class="status-pill ${c[s]||"status-idle"}">${m[s]||esc(s||"未知")}</span>`;
+}
+async function clearAllHistory(){
+  if(!confirm("确定删除全部历史运行记录？\n（元数据 + 结果文件 + 内存缓存将全部清空，不可恢复；正在运行的评测会被保留）"))return;
+  if(!confirm("再次确认：真的要清空所有评测历史吗？"))return;
+  try{
+    const r=await api("/api/quality/history-all",{method:"DELETE"});
+    RESULTS=null;resetHM();
+    $("#statsCard").style.display="none";$("#chartCard").style.display="none";
+    $("#heatmapBox").innerHTML=`<div class="empty">暂无数据 · 请先运行评测或从历史加载</div>`;
+    setStatus("status-idle","已清空历史记录（删除 "+(r.removed_files||0)+" 个文件"+(r.kept_running&&r.kept_running.length?"，保留运行中 #"+r.kept_running.join(","):"")+"）");
+    loadHistory();
+  }catch(e){alert("清空失败: "+e.message)}
+}
+
+/* ---------- 自动载入中断/未收尾的运行 + 刷新后恢复后台评测 ---------- */
+async function maybeLoadLatest(){
+  if(RUNID)return;
+  try{
+    const st=await api("/api/quality/status");
+    const cur=st.current&&st.current.run_id;
+    // 后台运行/停止中: 刷新后接回跟跑 (评测在服务器端运行, 刷新/离开都不中断)
+    if(st.running||st.cancelling){
+      RUNID=cur||null;
+      resetHM();
+    {const _f1=$("#hmDomain"),_f2=$("#hmDiff"),_f3=$("#hmSearch");if(_f1){_f1.value="";_f2.value="";_f3.value="";PAGE=0;}}
+      setStatus(st.cancelling?"status-err":"status-run",
+        st.cancelling?"停止中…（后台任务收尾中）":"后台运行中 · 刷新页面不会中断评测");
+      $("#runBtn").disabled=true;$("#cancelBtn").disabled=false;
+      $("#statsCard").style.display="none";$("#chartCard").style.display="none";
+      $("#liveCard").style.display="block";
+      $("#hmLiveTag").style.display="inline-block";
+      $("#liveBox").innerHTML=`<div class="live-head"><div class="live-bar"><div style="width:0%"></div></div><span class="muted">已接回后台评测，正在同步实时表现…</span></div>`;
+      poll();
+      return;
+    }
+    if(!cur)return;
+    // 打开页面: 自动载入最近一次运行(含已完成), 保证结果/热力图始终可见
+    const h=await api("/api/quality/history");
+    const cand=h.runs[0]||null;
+    if(cand){
+      if(cand.status==="done")setStatus("status-idle","已自动载入最近运行 #"+cand.run_id);
+      else setStatus("status-idle","已自动载入中断运行 #"+cand.run_id);
+      await loadResults(cand.run_id,{silent404:true,silentNoFile:true});
+    }
+  }catch(e){/* 忽略：历史/状态不可用时静默 */}
+}
+
+/* ---------- Export ---------- */
+function exportCsv(){
+  if(!RESULTS)return;
+  const rows=[["qid","benchmark","domain","difficulty","endpoint","score","latency_s","error"]];
+  RESULTS.forEach(r=>rows.push([r.qid,r.benchmark,r.domain,r.difficulty,r.endpoint,
+    r.score===null||r.score===undefined?"":r.score,r.latency||"",r.error||""]));
+  const csv="\ufeff"+rows.map(r=>r.map(x=>`"${String(x).replace(/"/g,'""')}"`).join(",")).join("\n");
+  const a=document.createElement("a");a.href=URL.createObjectURL(new Blob([csv],{type:"text/csv"}));
+  a.download=`quality_${RUNID||"run"}.csv`;a.click();
+}
+function exportJson(){
+  if(!RESULTS)return;
+  const a=document.createElement("a");
+  a.href=URL.createObjectURL(new Blob([JSON.stringify({run_id:RUNID,status:RES_META.status,partial:RES_META.partial,results:RESULTS})],{type:"application/json"}));
+  a.download=`quality_${RUNID||"run"}.json`;a.click();
+}
+$("#exportCsv").onclick=exportCsv;$("#exportJson").onclick=exportJson;
+
+/* ---------- Boot ---------- */
+applyTheme();
+$("#runBtn").onclick=startRun;
+$("#resumeMainBtn").onclick=resumeLatest;
+$("#cancelBtn").onclick=cancelRun;
+$("#refreshMeta").onclick=loadMeta;
+$("#clearHistAll").onclick=clearAllHistory;
+initCfg();
+loadMeta();
+loadHistory();
+maybeLoadLatest();
+</script>
+</body>
+</html>

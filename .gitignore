@@ -1,0 +1,22 @@
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+env/
+
+# 运行产物(题库 questions.jsonl 之外的运行数据/历史/骨架)
+data/run_*.json
+data/run_*_skeleton.json
+data/run_*_results.json
+
+# OS / 编辑器
+.DS_Store
+Thumbs.db
+Desktop.ini
+.vscode/
+.idea/
+*.swp
+
+# 日志
+*.log
