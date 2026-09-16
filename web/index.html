@@ -1220,10 +1220,27 @@ async function fetchSkeleton(runId, silent){
   return SKEL;
 }
 function renderLiveHeatmap(lv,st){
-  // 1) 骨架: 运行 id 变化 → 异步拉全量骨架(一次性, 之后只增量)
+  // 1) 骨架: 运行 id 变化 → 异步拉全量骨架(之后只在"骨架没到齐"时补拉)
   if(lv&&SKEL&&lv.run_id!=null&&SKEL.run_id!==lv.run_id){SKEL=null;CELLS={};}
-  if(lv&&lv.run_id!=null&&lv.skeleton&&!SKEL){
-    fetchSkeleton(lv.run_id,true).then(()=>{if(HM_LIVE){try{renderMatrix()}catch(e){}}});
+  if(lv&&lv.run_id!=null){
+    // ★ 2026-09-17 修「第一次新测试时每个格子排一行」:
+    //   以前只有 !SKEL 时才拉一次骨架 —— 若那次请求早于后端 skel 就绪(或运行刚建、只拿到极少题目),
+    //   前端就一直用"少数几道题"当列, 每行只排 1 格(多端点/多轮时看起来就是"每格一行"),
+    //   而且这个错误布局会一直保持到整轮跑完(点刷新才恢复)。
+    //   现在: ① /status 里带了题目清单(items_lite)时立刻用它兜底; ② 每当服务端骨架题数比本地多,
+    //   就补拉一次(节流 3s) → 列数/格子数始终跟运行本身一致。
+    const srvN=(lv.skeleton&&lv.skeleton.n)||(lv.questions?lv.questions.length:0)||0;
+    if(!SKEL&&lv.questions&&lv.questions.length){
+      SKEL={"run_id":lv.run_id,"questions":lv.questions,"endpoints":lv.endpoints||[],
+        "rounds":lv.rounds||1,"concurrency":lv.concurrency||1,
+        "total_cells":lv.questions.length*((lv.endpoints||[]).length||1)*(lv.rounds||1),"partial":true};
+      QORDER={};SKEL.questions.forEach((q,i)=>{QORDER[q.qid]=i});
+    }
+    const short=!SKEL||SKEL.partial||SKEL.questions.length<srvN;
+    if(lv.skeleton&&short&&Date.now()-(window.__skelAt||0)>3000){
+      window.__skelAt=Date.now();
+      fetchSkeleton(lv.run_id,true).then(()=>{if(HM_LIVE){try{renderMatrix()}catch(e){}}});
+    }else if(!SKEL){return}
   }
   if(!SKEL)return;
   // 2) 已判定格子增量(照搬参考页「单槽单状态、终态原地覆盖」; 中途刷新也能补齐全部格子)
@@ -1645,8 +1662,8 @@ let MX_FIT=0,MX_FIT_W=-1;     // 上次自检通过时的列数 + 当时的容�
 function mxPerRow(){
   const box=$("#heatmapBox");
   if(!box)return MX_PER_ROW;
-  const bw=box.clientWidth||0;
-  if(MX_FIT>0&&MX_FIT_W===bw)return MX_FIT;      // 同一宽度: 沿用上次实测(含自检修正)结果
+  const realW=box.clientWidth||0;
+  if(MX_FIT>0&&MX_FIT_W===realW)return MX_FIT;   // 同一宽度: 沿用上次实测(含自检修正)结果
   const wrap=document.querySelector("#heatmapBox .mxwrap")||box;
   const cs=getComputedStyle(wrap);
   const size=parseFloat(cs.getPropertyValue("--mx-size"))||38;
@@ -1658,6 +1675,14 @@ function mxPerRow(){
     labW=Math.max(labW,el.getBoundingClientRect().width);
   });
   if(!labW)labW=110;                             // 首次渲染还没标签: 用最小宽度估, 建完由自检修正
+  // ★ 首帧兜底(2026-09-17 修 "第一次新测试时每格一行"):
+  //   卡片/容器被隐藏或还没布局时 clientWidth 会是 0, 用 0 去算只会得到最少列数,
+  //   看起来就是"每个格子排一行"。这里退回「卡片宽度 → 窗口宽度估算」, 绝不用 0 量宽。
+  let bw=realW;
+  if(bw<160){
+    const card=box.closest(".card")||box.parentElement;
+    bw=(card&&card.clientWidth)||Math.max(320,window.innerWidth-320);
+  }
   const avail=Math.max(120,bw-labW-10);
   const fit=Math.floor((avail+gap)/(size+gap));
   return Math.max(4,Math.min(MX_PER_ROW,fit));
@@ -1665,6 +1690,27 @@ function mxPerRow(){
 function mxGridStyle(n){
   const cols=Math.min(MX_PER_ROW,Math.max(1,n|0));
   return `--mx-cols:${cols};grid-template-columns:repeat(${cols},var(--mx-size,38px))`;
+}
+/* 渲染后复核真实排版: 量「每行格子数」和「横向溢出」, 与应有列数不符就重排一次。
+   只对同一 (宽度|每行数|溢出) 组合复核一次, 避免抖动/死循环。 */
+let MX_VERIFY_T=null,MX_V_LAST="";
+function mxVerifyLayout(){
+  MX_VERIFY_T=null;
+  const box=$("#heatmapBox");if(!box)return;
+  const bw=box.clientWidth||0;
+  if(bw<240)return;                                  // 容器还没成型: 等 ResizeObserver / 下次渲染
+  const g=box.querySelector(".mx-cells");
+  if(!g||!g.children.length)return;
+  const rows={};
+  [...g.children].forEach(c=>{const k=Math.round(c.getBoundingClientRect().top);rows[k]=(rows[k]||0)+1});
+  const per=Math.max(0,...Object.values(rows));
+  const over=box.scrollWidth-box.clientWidth;
+  const key=bw+"|"+per+"|"+over;
+  if(key===MX_V_LAST)return;                         // 复核过仍如此 → 稳定, 不再重排
+  MX_V_LAST=key;
+  MX_FIT=0;MX_FIT_W=-1;                              // 作废缓存, 按现在的真实宽度重算
+  const want=Math.min(MX_PER_ROW,mxPerRow());
+  if(over>2||per<want-1||per>want+1){MATX_SIG="";try{renderMatrix()}catch(e){}}
 }
 function cellKey(rnd,ep,qid){return (rnd||1)+"|"+(ep||"")+"|"+(qid||"");}
 function cellStatusOf(key){
@@ -1785,8 +1831,12 @@ function renderMatrix(fitCols,tries){
   const dom=$("#hmDomain").value,diff=$("#hmDiff").value,kw=$("#hmSearch").value.trim().toLowerCase();
   const qs=matrixQListFiltered();
   const eps=matrixEps(),rnds=matrixRounds();
-  // 本行格子数: 按窗口宽度算, 再由渲染后自检微调(fitCols) —— 参与重建签名, 宽度变了会自动重排换行
-  const PR=Math.max(1,Math.min((fitCols||mxPerRow()),Math.max(1,qs.length)));
+  // 本行格子数 = 纯按容器宽度算(≤MX_PER_ROW)。★ 绝对不要用 qs.length 去夹它:
+  //   ① 首帧题目清单还没到(空/1 道)时会把列数压成 1, 看起来就是"每个格子排一行";
+  //   ② 更糟的是下面 MX_FIT=PR 会把"被夹小的列数"当成"这个宽度能放几格"缓存起来,
+  //      于是错误布局会一直保持到窗口宽度变化/刷新 —— 这正是"第一次新测试排版错乱、
+  //      清缓存后才正常"的根因(2026-09-17 定位并修复)。最后一行少几格是正常的。
+  const PR=Math.max(4,Math.min(fitCols||mxPerRow(),MX_PER_ROW));
   const sig=[HM_LIVE?(SKEL?"s"+SKEL.run_id:"s0"):"h",$("#hmMode").value,dom,diff,kw,qs.length,eps.join(","),rnds,PR].join("|");
   const isBuild=(sig!==MATX_SIG);
   MATX_SIG=sig;
@@ -1890,6 +1940,10 @@ function renderMatrix(fitCols,tries){
          &&box.scrollWidth+(size+gap)<=box.clientWidth+2){renderMatrix(PR+1,tries+1);return}
     }
     MX_FIT=PR;MX_FIT_W=box.clientWidth||0;
+    // ★ 渲染后再异步复核一次真实排版: 万一首帧是在"卡片还没显示/布局未完成"时测的宽,
+    //   这里按实际 DOM 量每行格子数与溢出量, 对不上就按现在的宽度重排(同一结果只复核一次, 不抖动)。
+    clearTimeout(MX_VERIFY_T);
+    MX_VERIFY_T=setTimeout(mxVerifyLayout,300);
   }else{
     const le=document.getElementById("hmLegend");
     if(le&&le.outerHTML!==legend.replace('class="matrix-legend"','id="hmLegend" class="matrix-legend"'))le.outerHTML=legend.replace('class="matrix-legend"','id="hmLegend" class="matrix-legend"');
