@@ -92,8 +92,9 @@ tr:hover td{background:var(--panel-2)}
 .ep-test-head .ep-test-close{margin-left:auto;padding:2px 8px}
 .ep-test-row{padding:5px 0;border-top:1px dashed var(--line);font-size:12px;line-height:1.55}
 .ep-test-row .ep-test-name{font-weight:700;margin-right:6px}
-.heatmap-wrap{overflow:auto;max-height:560px;border:1px solid var(--line);border-radius:8px}
-.heatmap-wrap table{white-space:nowrap}
+/* 2026-09-17 按用户要求: 格子矩阵不再有横向滚动区 —— 所有格子按窗口宽度换行全部铺开 */
+.heatmap-wrap{overflow:visible;border:1px solid var(--line);border-radius:8px}
+.heatmap-wrap table{white-space:normal;word-break:break-word}
 .heatmap-wrap th,.heatmap-wrap td{padding:3px 6px;text-align:center}
 .heatmap-wrap td.cell{cursor:pointer;border:1px solid #00000030;min-width:56px;height:26px;color:#062018;font-weight:700}
 .heatmap-wrap td.cell:hover{outline:2px solid var(--cyan)}
@@ -108,7 +109,10 @@ tr:hover td{background:var(--panel-2)}
 /* 结果统计: 「按领域 / 按难度」明细表独立成块(不能放进 .stat-cards 网格, 否则会和
    统计卡片挤在同一行网格里, 宽表格溢出单元格 → 两块内容互相重叠) */
 .stat-tables{display:block;margin-top:12px}
-.stat-tables .tbl-sec{margin-top:10px;padding-top:8px;border-top:1px dashed var(--line);overflow-x:auto}
+.stat-tables .tbl-sec{margin-top:10px;padding-top:8px;border-top:1px dashed var(--line);overflow:visible}
+/* 统计表同样不横向滚动: 固定布局 + 单元格换行(2026-09-17 按用户要求) */
+.stat-tables table{table-layout:fixed;width:100%}
+.stat-tables th,.stat-tables td{white-space:normal;word-break:break-word}
 .stat-tables .tbl-sec:first-child{margin-top:0;padding-top:0;border-top:none}
 .stat-tables .tbl-title{font-size:12px;color:var(--muted);margin:0 0 6px}
 .stat-tables table{min-width:min(100%,360px)}
@@ -151,7 +155,7 @@ tr:hover td{background:var(--panel-2)}
 /* ---------- 新增：题库浏览 ---------- */
 .browse{display:grid;grid-template-columns:minmax(0,1fr);gap:14px} /* 单列(2026-09-14) */
 @media(max-width:1100px){.browse{grid-template-columns:minmax(0,1fr)}}
-.browse-left{background:var(--panel-2);border:1px solid var(--line);border-radius:10px;padding:10px 12px;max-height:640px;overflow:auto}
+.browse-left{background:var(--panel-2);border:1px solid var(--line);border-radius:10px;padding:10px 12px;max-height:none;overflow:visible}
 .browse-left .bdom{background:var(--panel-3);border:1px solid var(--line);border-radius:8px;margin-bottom:8px;padding:8px 10px;cursor:pointer}
 .browse-left .bdom:hover{border-color:var(--accent-2)}
 .browse-left .bdom.on{border-color:var(--accent-2);background:var(--panel)}
@@ -161,7 +165,7 @@ tr:hover td{background:var(--panel-2)}
 .browse-left .bchip{font-size:11px;padding:2px 8px;border-radius:14px;border:1px solid var(--line);color:var(--muted);cursor:pointer;background:var(--panel-2)}
 .browse-left .bchip:hover{border-color:var(--accent-2)}
 .browse-left .bchip.on{background:var(--accent-2);color:#04120b;border-color:var(--accent-2)}
-.browse-right{overflow:auto;max-height:640px}
+.browse-right{overflow:visible;max-height:none}
 .browse-tools{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:8px}
 .browse-tools input{width:220px;padding:5px 8px}
 .tier-badge{display:inline-block;font-size:10px;padding:1px 6px;border-radius:8px;margin:0 2px 2px 0;border:1px solid var(--line-strong);color:var(--muted)}
@@ -178,18 +182,28 @@ tr:hover td{background:var(--panel-2)}
 .chart-sec{margin-top:14px}
 .chart-sec h3{font-size:13px;color:var(--muted);margin-bottom:8px}
 .bars{display:flex;flex-direction:column;gap:6px}
-.bar-line{display:grid;grid-template-columns:170px 1fr 70px;gap:8px;align-items:center;font-size:12px}
-.bar-line .bl-name{color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.bar-line .bl-track{background:var(--panel-2);border:1px solid var(--line);border-radius:6px;height:14px;overflow:hidden;display:flex}
+/* 图表行: 三列(名称/进度条/分数)。第三列必须按内容自适应 —— 固定 70px 时
+   多端点("100% / 96% / 88% / 92%")且 nowrap 会直接冲出卡片外框(2026-09-17 修复) */
+.bar-line{display:grid;grid-template-columns:minmax(0,170px) minmax(60px,1fr) max-content;gap:8px;align-items:center;font-size:12px}
+.bar-line .bl-name{color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0}
+.bar-line .bl-track{background:var(--panel-2);border:1px solid var(--line);border-radius:6px;height:14px;overflow:hidden;display:flex;min-width:0}
 .bar-line .bl-seg{height:100%}
-.bar-line .bl-num{color:var(--muted);text-align:right;white-space:nowrap}
-.vbars{display:flex;gap:6px;align-items:flex-end;min-height:120px;overflow-x:auto;padding-bottom:4px}
+.bar-line .bl-num{color:var(--muted);text-align:right;white-space:nowrap;justify-self:end;max-width:100%}
+/* 窄屏: 分数挪到名称同一行右侧, 进度条独占下一行 → 永远不会超框 */
+@media(max-width:820px){
+  .bar-line{grid-template-columns:minmax(0,1fr) max-content;
+    grid-template-areas:"name num" "track track";row-gap:4px}
+  .bar-line .bl-name{grid-area:name}
+  .bar-line .bl-num{grid-area:num}
+  .bar-line .bl-track{grid-area:track}
+}
+.vbars{display:flex;gap:6px;align-items:flex-end;flex-wrap:wrap;min-height:120px;overflow:visible;padding-bottom:4px}
 .vbar{display:flex;flex-direction:column;align-items:center;gap:3px;min-width:52px}
 .vbar .vb-stack{display:flex;gap:2px;align-items:flex-end;height:90px}
 .vbar .vb-seg{width:14px;border-radius:3px 3px 0 0}
 .vbar .vb-lbl{font-size:10px;color:var(--muted);max-width:52px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .vbar .vb-val{font-size:10px;color:var(--muted)}
-.hist{display:flex;gap:4px;align-items:flex-end;min-height:120px;overflow-x:auto;padding-bottom:4px}
+.hist{display:flex;gap:4px;align-items:flex-end;flex-wrap:wrap;min-height:120px;overflow:visible;padding-bottom:4px}
 .hist .hb{display:flex;flex-direction:column;align-items:center;gap:3px;min-width:44px}
 .hist .hb .hstack{display:flex;gap:2px;align-items:flex-end;height:90px}
 .hist .hb .hseg{width:14px;border-radius:3px 3px 0 0}
@@ -234,7 +248,8 @@ tr:hover td{background:var(--panel-2)}
 .live-head{display:flex;align-items:center;gap:10px;flex-wrap:wrap;padding:8px 10px;border-bottom:1px solid var(--line-strong);background:rgba(28,130,173,.04)}
 .live-bar{height:8px;border-radius:6px;background:var(--panel-2);border:1px solid var(--line);overflow:hidden;min-width:180px;flex:1}
 .live-bar>div{height:100%;background:linear-gradient(90deg,var(--ref-primary),var(--ref-info));transition:width .4s}
-.live-panel{max-height:420px;overflow-y:auto}
+/* 实时列表也不再折叠滚动: 全部条目直接铺开(2026-09-17 按用户要求) */
+.live-panel{max-height:none;overflow:visible}
 .live-panel::-webkit-scrollbar{width:8px}
 .live-panel::-webkit-scrollbar-thumb{background:var(--line-strong);border-radius:4px}
 
@@ -248,11 +263,17 @@ tr:hover td{background:var(--panel-2)}
    - 端点名/测试名完整显示, 不换行、不截断, 字体加大, 横向滚动时左侧标签吸附可见;
    - 部分得分(0.1~0.9)直接显示在格子里 → 主观题评分不再是「0 或 1」。 */
 .mx-round{display:flex;align-items:flex-start;gap:8px;margin:8px 0}
-.mx-rlab{flex:0 0 auto;min-width:110px;font-size:13px;font-weight:700;color:var(--text);line-height:1.3;
-  text-align:right;padding:10px 2px 0 0;white-space:nowrap;
+.mx-rlab{flex:0 0 auto;min-width:110px;max-width:190px;font-size:13px;font-weight:700;color:var(--text);line-height:1.3;
+  text-align:right;padding:10px 2px 0 0;
   position:sticky;left:0;z-index:3;background:var(--panel)}
-.mx-rlab .mx-cnt{font-weight:600;color:var(--muted);font-size:12px}
-.mx-cells{--mx-size:38px;display:grid;grid-template-columns:repeat(20,var(--mx-size));grid-auto-rows:var(--mx-size);gap:6px;min-width:0}
+/* 端点名过长(如「mock-bad-model-长名字端点」)时截断, 而不是把整行撑出容器 */
+.mx-rlab .mx-epname{display:block;max-width:100%;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.mx-rlab .mx-cnt{font-weight:600;color:var(--muted);font-size:12px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+/* 格子尺寸/间距只在这里定义: 单元格与难度色带共用同一套值, 保证上下永远对齐。
+   列数由 JS 按窗口实际可用宽度算(mxPerRow) → 放不下就换行, 不出现横向滚动。 */
+.mxwrap{--mx-size:38px;--mx-gap:6px;display:block;min-width:0;max-width:100%}
+.mx-cells{display:grid;grid-template-columns:repeat(var(--mx-cols,20),var(--mx-size,38px));
+  grid-auto-rows:var(--mx-size,38px);gap:var(--mx-gap,6px);min-width:0}
 .matrix-cell{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:1px;
   width:var(--mx-size,38px);height:var(--mx-size,38px);flex:0 0 auto;cursor:pointer;
   border-radius:4px;border:1px solid var(--ref-border);overflow:hidden;
@@ -278,13 +299,21 @@ tr:hover td{background:var(--panel-2)}
 .cell.score-run{background:var(--run)!important;color:#fff!important;animation:pulse-blue 1.5s infinite}
 .matrix-legend{display:flex;gap:14px;flex-wrap:wrap;font-size:11px;color:var(--text-muted);margin-bottom:8px;align-items:center}
 .matrix-legend .cell{width:14px;height:14px;display:inline-block;vertical-align:-2px;margin-right:4px;border:1px solid var(--ref-border);border-radius:2px}
-.tscroll{overflow-x:auto;border-radius:8px}
+/* 表格模式(按题目/按 Benchmark)同样不横向滚动: 固定布局 + 单元格内换行 */
+.tscroll{overflow:visible}
+.tscroll table{table-layout:fixed;width:100%}
+.tscroll th,.tscroll td{white-space:normal;word-break:break-word}
 @media(max-width:640px){
-  .mx-cells{--mx-size:26px;gap:4px}
+  .mxwrap{--mx-size:26px;--mx-gap:4px}
   .matrix-cell{font-size:8px}
   .matrix-cell .qx{font-size:8px}
   .matrix-cell .sc{font-size:9px}
   .mx-rlab{font-size:12px;min-width:80px;padding-top:6px}
+}
+/* 窄屏(含工具箱 iframe): 行标签移到格子上方, 让格子拿到全部宽度 */
+@media(max-width:820px){
+  .mx-round{flex-direction:column;align-items:stretch;gap:2px}
+  .mx-rlab{position:static;text-align:left;padding:2px 0 4px;min-width:0}
 }
 .hist-del{background:none;border:none;cursor:pointer;font-size:14px;padding:2px 6px;opacity:.65}
 .hist-del:hover{opacity:1;transform:scale(1.15)}
@@ -363,7 +392,7 @@ tr:hover td{background:var(--panel-2)}
 /* ---------- 难度分区: 格底 3px 色条 + 分区标题带(2026-09-17 按用户要求) ---------- */
 .mx-lines{display:flex;flex-direction:column;gap:7px;min-width:0}
 .mx-line{display:flex;flex-direction:column;gap:3px;min-width:0}
-.mx-band{--mx-size:38px;display:grid;gap:6px;min-width:0}
+.mx-band{display:grid;gap:var(--mx-gap,6px);min-width:0;max-width:100%}
 .mx-band-seg{height:19px;line-height:17px;font-size:11px;font-weight:700;text-align:center;color:var(--text);
   background:var(--panel-3);border:1px solid var(--dc,#c08a1e);border-bottom-width:3px;border-radius:2px 2px 0 0;
   overflow:hidden;white-space:nowrap;text-overflow:clip;padding:0 4px}
@@ -682,6 +711,26 @@ $("#themeBtn")&&($("#themeBtn").onclick=()=>{
   const t=(document.documentElement.dataset.theme==="light")?"dark":"light";
   localStorage.setItem("quality_theme",t);applyTheme();
 });
+
+/* ================= 窗口尺寸变化 → 重新计算每行格子数 =================
+   格子必须全部换行铺开、不许横向滚动, 所以列数是按可用宽度动态算的:
+   窗口/工具箱 iframe 尺寸一变, 就作废矩阵缓存重排(节流 220ms)。 */
+let _mxResizeT=null,_mxLastW=0;
+function mxOnResize(){
+  const w=($("#heatmapBox")||{}).clientWidth||window.innerWidth;
+  if(Math.abs(w-_mxLastW)<24)return;         // 宽度没实质变化就不折腾
+  _mxLastW=w;
+  clearTimeout(_mxResizeT);
+  _mxResizeT=setTimeout(()=>{
+    if(!$("#hmMode")||$("#hmMode").value!=="m")return;
+    MX_FIT=0;MATX_SIG="";
+    try{renderMatrix()}catch(e){}
+  },220);
+}
+window.addEventListener("resize",mxOnResize);
+if(window.ResizeObserver&&$("#heatmapBox")){
+  try{new ResizeObserver(mxOnResize).observe($("#heatmapBox"))}catch(e){}
+}
 
 /* ================= 维基式「目录」侧栏 + 顶栏页签 =================
    目录从页面上的 .wk-sec 章节自动生成(隐藏的章节不列), 滚动时高亮当前章节。 */
@@ -1124,7 +1173,7 @@ function renderLiveHeatmap(lv,st){
   // 1) 骨架: 运行 id 变化 → 异步拉全量骨架(一次性, 之后只增量)
   if(lv&&SKEL&&lv.run_id!=null&&SKEL.run_id!==lv.run_id){SKEL=null;CELLS={};}
   if(lv&&lv.run_id!=null&&lv.skeleton&&!SKEL){
-    fetchSkeleton(lv.run_id,true).then(()=>{if(HM_LIVE){try{renderMatrix(true)}catch(e){}}});
+    fetchSkeleton(lv.run_id,true).then(()=>{if(HM_LIVE){try{renderMatrix()}catch(e){}}});
   }
   if(!SKEL)return;
   // 2) 已判定格子增量(照搬参考页「单槽单状态、终态原地覆盖」; 中途刷新也能补齐全部格子)
@@ -1525,11 +1574,34 @@ function sortByDifficulty(list){
     .sort((a,b)=>diffRankOf(tierOf(a[0]))-diffRankOf(tierOf(b[0]))||a[1]-b[1])
     .map(x=>x[0]);
 }
-/* 每行(轮次×端点)格子数上限: 超过 20 格换到下一行继续显示(2026-09-16 按用户要求) */
-const MX_PER_ROW=20;
+/* 每行的格子数: 2026-09-17 按用户要求改成「按窗口实际可用宽度算」——
+   格子矩阵必须全部换行铺开, 不允许出现需要横向滑动的折叠区域, 所以列数不再是写死的 20:
+   宽屏最多 20 格/行, 窄屏(含工具箱 iframe)自动少放几列继续换行, 一行也放不下就至少 4 格。 */
+const MX_PER_ROW=20;          // 每行硬上限(超过就换行, 与难度分区带的切分保持一致)
+let MX_FIT=0,MX_FIT_W=-1;     // 上次自检通过时的列数 + 当时的容器宽度(同宽度下直接沿用, 避免重复测量)
+function mxPerRow(){
+  const box=$("#heatmapBox");
+  if(!box)return MX_PER_ROW;
+  const bw=box.clientWidth||0;
+  if(MX_FIT>0&&MX_FIT_W===bw)return MX_FIT;      // 同一宽度: 沿用上次实测(含自检修正)结果
+  const wrap=document.querySelector("#heatmapBox .mxwrap")||box;
+  const cs=getComputedStyle(wrap);
+  const size=parseFloat(cs.getPropertyValue("--mx-size"))||38;
+  const gap=parseFloat(cs.getPropertyValue("--mx-gap"))||6;
+  // 行标签占位: 取所有行标签里最宽的一个(样式已限 max-width:190px); 窄屏(≤820px)标签在格子上方, 不占横向宽度
+  let labW=0;
+  document.querySelectorAll("#heatmapBox .mx-rlab").forEach(el=>{
+    if(getComputedStyle(el).position==="static")return;
+    labW=Math.max(labW,el.getBoundingClientRect().width);
+  });
+  if(!labW)labW=110;                             // 首次渲染还没标签: 用最小宽度估, 建完由自检修正
+  const avail=Math.max(120,bw-labW-10);
+  const fit=Math.floor((avail+gap)/(size+gap));
+  return Math.max(4,Math.min(MX_PER_ROW,fit));
+}
 function mxGridStyle(n){
   const cols=Math.min(MX_PER_ROW,Math.max(1,n|0));
-  return `grid-template-columns:repeat(${cols},var(--mx-size,38px))`;
+  return `--mx-cols:${cols};grid-template-columns:repeat(${cols},var(--mx-size,38px))`;
 }
 function cellKey(rnd,ep,qid){return (rnd||1)+"|"+(ep||"")+"|"+(qid||"");}
 function cellStatusOf(key){
@@ -1645,11 +1717,14 @@ function laneLabelHtml(rnd,ep,qs){
   if(rq)stat+=`<div class="mx-cnt">+${rq} 在途</div>`;
   return stat+laneHint(rnd,ep);   // 蓝格卡在慢题上时显示题号与已耗时
 }
-function renderMatrix(){
+function renderMatrix(fitCols,tries){
+  const _tries=tries||0;
   const dom=$("#hmDomain").value,diff=$("#hmDiff").value,kw=$("#hmSearch").value.trim().toLowerCase();
   const qs=matrixQListFiltered();
   const eps=matrixEps(),rnds=matrixRounds();
-  const sig=[HM_LIVE?(SKEL?"s"+SKEL.run_id:"s0"):"h",$("#hmMode").value,dom,diff,kw,qs.length,eps.join(","),rnds].join("|");
+  // 本行格子数: 按窗口宽度算, 再由渲染后自检微调(fitCols) —— 参与重建签名, 宽度变了会自动重排换行
+  const PR=Math.max(1,Math.min((fitCols||mxPerRow()),Math.max(1,qs.length)));
+  const sig=[HM_LIVE?(SKEL?"s"+SKEL.run_id:"s0"):"h",$("#hmMode").value,dom,diff,kw,qs.length,eps.join(","),rnds,PR].join("|");
   const isBuild=(sig!==MATX_SIG);
   MATX_SIG=sig;
   // 统计始终从骨架×单槽状态推 → 算出来的数与格子永远对得上
@@ -1669,7 +1744,7 @@ function renderMatrix(){
     <span><i class="cell" style="background:#d4a017"></i>已答未评分 ${cnt.none}</span>
     ${cnt.pendingDone?`<span><i class="cell" style="background:repeating-linear-gradient(45deg,var(--panel-2) 0 4px,rgba(148,163,184,.16) 4px 8px)"></i>已判完待点亮 ${cnt.pendingDone}</span>`:""}
     <span><i class="cell" style="background:var(--panel-2);border:1px dashed var(--line)"></i>未完成 ${cnt.pending}</span>
-    <span class="muted-2">共 ${total} 格（${qs.length} 题 × ${eps.length} 端点 × ${rnds} 轮） · 格内 Q 编号=第几道题 · <b>橙格/小数(如 0.6)=该题部分得分</b> · 运行中蓝格之后一律留灰，蓝格走到才点亮（斜纹格=其实已判完，在等前面那道慢题） · 每行最多 ${MX_PER_ROW} 格，超出自动换行 · 点格子看详情</span></div>`;
+    <span class="muted-2">共 ${total} 格（${qs.length} 题 × ${eps.length} 端点 × ${rnds} 轮） · 格内 Q 编号=第几道题 · <b>橙格/小数(如 0.6)=该题部分得分</b> · 运行中蓝格之后一律留灰，蓝格走到才点亮（斜纹格=其实已判完，在等前面那道慢题） · <b>全部 ${total} 个格子按窗口宽度换行铺开（${PR} 格/行），没有折叠区、也不需要横向滑动</b> · 点格子看详情</span></div>`;
   // 难度分区图例: 格底 3px 色条 + 上方标题带 = 该题难度(按易→难排列)
   const diffLegend=`<div class="mx-difflegend">
     <span class="dl-cap">难度分区（题目按易→难排列）</span>
@@ -1708,10 +1783,11 @@ function renderMatrix(){
     // 题号编号 = 列序(第 1..N 道) = 难度序(同档位内保持引擎派题序)。
     for(let rnd=1;rnd<=rnds;rnd++){
       for(const ep of eps){
-        // 每行最多 MX_PER_ROW 格 → 逐"视觉行"渲染, 每行上方带一条难度标题带(与格子同一套列宽, 永远对齐)
+        // 每 PR 格一条"视觉行" → 每行上方带一条难度标题带(与格子同一套列宽, 永远对齐)。
+        // PR 由窗口宽度算得(≤20), 所有格子换行铺开, 不产生横向滚动区。
         let lines="";
-        for(let a=0;a<qs.length;a+=MX_PER_ROW){
-          const b=Math.min(qs.length,a+MX_PER_ROW),gs=mxGridStyle(b-a);
+        for(let a=0;a<qs.length;a+=PR){
+          const b=Math.min(qs.length,a+PR),gs=mxGridStyle(b-a);
           let cells="";
           for(let i=a;i<b;i++){
             const q=qs[i],key=cellKey(rnd,ep,q.qid),st=cellStatusOf(key),sc=SCORES[key];
@@ -1727,17 +1803,30 @@ function renderMatrix(){
         const rlab=(rnds>1?`R${rnd}·`:"")+(ep||"");
         const stat=laneLabelHtml(rnd,ep,qs);
         const lid=`mxl_${rnd}_${eps.indexOf(ep)}`;
-        html+=`<div class="mx-round"><span class="mx-rlab" id="${lid}" title="${rnds>1?"第"+rnd+"轮 · ":""}${esc(ep)}">${esc(rlab)}${stat}</span><div class="mx-lines">${lines}</div></div>`;
+        html+=`<div class="mx-round"><span class="mx-rlab" id="${lid}" title="${rnds>1?"第"+rnd+"轮 · ":""}${esc(ep)}"><span class="mx-epname">${esc(rlab)}</span>${stat}</span><div class="mx-lines">${lines}</div></div>`;
       }
     }
     const box=$("#heatmapBox");
-    box.innerHTML=`<div class="tscroll">${legend.replace('class="matrix-legend"','id="hmLegend" class="matrix-legend"')}${diffLegend.replace('class="mx-difflegend"','id="hmDiffLegend" class="mx-difflegend"')}${html}</div>`;
+    // 注意: 这里不再包 .tscroll(横向滚动容器) —— 格子必须全部换行铺开
+    box.innerHTML=`<div class="mxwrap">${legend.replace('class="matrix-legend"','id="hmLegend" class="matrix-legend"')}${diffLegend.replace('class="mx-difflegend"','id="hmDiffLegend" class="mx-difflegend"')}${html}</div>`;
     box.querySelectorAll(".matrix-cell[data-key]").forEach(el=>{
       MATR_CELL[el.dataset.key]=el;
       const m=el.dataset.key.split("|");
       // 用真实题目对象(带 diff_tier/benchmark/domain)绑定, 否则提示里会丢掉难度与基准信息
       bindMatrixCell(el,QMAP[m[2]]||{qid:m[2],benchmark:"",difficulty:"medium"},m[1],el.dataset.st);
     });
+    // 自适应自检: 实测溢出就减列, 还有余量就加列 —— 最多来回 4 次, 既不出现横向滚动, 也不浪费宽度
+    if(tries<4){
+      const wrap=box.querySelector(".mxwrap");
+      const cs=getComputedStyle(wrap||box);
+      const size=parseFloat(cs.getPropertyValue("--mx-size"))||38;
+      const gap=parseFloat(cs.getPropertyValue("--mx-gap"))||6;
+      const over=box.scrollWidth-box.clientWidth;
+      if(over>2&&PR>4){renderMatrix(Math.max(4,PR-1),tries+1);return}
+      if(over<=2&&tries===0&&PR<MX_PER_ROW&&PR<qs.length
+         &&box.scrollWidth+(size+gap)<=box.clientWidth+2){renderMatrix(PR+1,tries+1);return}
+    }
+    MX_FIT=PR;MX_FIT_W=box.clientWidth||0;
   }else{
     const le=document.getElementById("hmLegend");
     if(le&&le.outerHTML!==legend.replace('class="matrix-legend"','id="hmLegend" class="matrix-legend"'))le.outerHTML=legend.replace('class="matrix-legend"','id="hmLegend" class="matrix-legend"');
@@ -1766,7 +1855,7 @@ function renderMatrix(){
       const lab=document.getElementById(`mxl_${rnd}_${eps.indexOf(ep)}`);
       if(!lab){MATX_SIG="";renderMatrix();return}
       const rlab=(rnds>1?`R${rnd}·`:"")+(ep||"");
-      const want=esc(rlab)+laneLabelHtml(rnd,ep,qs);
+      const want=`<span class="mx-epname">${esc(rlab)}</span>`+laneLabelHtml(rnd,ep,qs);
       if(lab.innerHTML!==want)lab.innerHTML=want;
     }
   }
@@ -1783,7 +1872,11 @@ function renderHeatmap(reset=true){
   const h=heatRows(src);
   const PER=400;
   const rows=h.rows.slice(PAGE*PER,(PAGE+1)*PER);
-  let html=`<table><tr><th style="min-width:170px">${h.mode==="q"?"题目":"Benchmark"}</th>
+  // 固定列宽 + 单元格内换行: 表格模式同样不出现横向滚动条(2026-09-17 按用户要求)
+  const epW=((100-46)/Math.max(1,h.eps.length)).toFixed(2)+"%";
+  let html=`<table><colgroup><col style="width:38%"><col style="width:8%">`
+    + h.eps.map(()=>`<col style="width:${epW}">`).join("") + `</colgroup>`
+    + `<tr><th style="min-width:170px">${h.mode==="q"?"题目":"Benchmark"}</th>
     <th>难度</th>`+h.eps.map(e=>`<th>${esc(e)}</th>`).join("")+`</tr>`;
   rows.forEach(r=>{
     html+=`<tr><td style="text-align:left" title="${esc(r.benchmark)}">${esc(r.qid.slice(0,44))}</td>

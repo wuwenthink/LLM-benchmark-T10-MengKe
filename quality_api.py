@@ -24,13 +24,24 @@ from typing import Optional
 from fastapi import APIRouter, HTTPException, Query
 from pydantic import BaseModel, Field
 
-import quality_engine as qe
-from benchmark_guard import set_active as guard_set_active
+# 双模式导入: ① 独立运行(server.py, 平铺模块) ② 作为工具箱(梦客)包内模块(app.quality_api)
+try:  # pragma: no cover - 取决于部署形态
+    from . import quality_engine as qe
+    from .benchmark_guard import set_active as guard_set_active
+except ImportError:  # 独立运行
+    import quality_engine as qe
+    from benchmark_guard import set_active as guard_set_active
 
 router = APIRouter(prefix="/api/quality", tags=["quality"])
 
-# 默认数据目录 = 本目录 data/ (server.py 会用 QUALITY_DATA_DIR 显式指定; 环境变量优先)
-DATA_DIR = Path(os.environ.get("QUALITY_DATA_DIR") or (Path(__file__).resolve().parent / "data"))
+# 数据目录优先级: 环境变量 > 同目录 data/(独立运行, server.py 也会显式指定) > /app/data/quality(工具箱容器)
+_ENV_DATA_DIR = os.environ.get("QUALITY_DATA_DIR")
+if _ENV_DATA_DIR:
+    DATA_DIR = Path(_ENV_DATA_DIR)
+elif (Path(__file__).resolve().parent / "data").is_dir():
+    DATA_DIR = Path(__file__).resolve().parent / "data"
+else:
+    DATA_DIR = Path("/app/data/quality")
 DATA_DIR.mkdir(parents=True, exist_ok=True)
 QUESTION_PATH = DATA_DIR / "questions.jsonl"
 # SQL 单独测试档位题集(25 题, 随代码发布, 与题集合并)

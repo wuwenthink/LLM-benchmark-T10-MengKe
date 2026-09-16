@@ -14,12 +14,15 @@ try:
 except ImportError:
     httpx = None
 
-# 可选的调用追踪钩子: 若同目录存在 call_tracker.py 且提供 begin()/end(),
-# 每次调用推理端点前后会被记录(便于排查/审计); 没有该文件时自动跳过, 不影响评测。
-try:
-    import call_tracker as _call_tracker  # type: ignore
-except Exception:  # pragma: no cover
-    _call_tracker = None
+# 可选的调用追踪钩子: 工具箱(梦客)内是 app/api_tracker.py, 独立运行时可选 call_tracker.py;
+# 每次调用推理端点前后会被记录(便于排查/审计); 两者都没有时自动跳过, 不影响评测。
+try:  # pragma: no cover - 取决于部署形态
+    from . import api_tracker as _call_tracker      # 工具箱包内模块
+except Exception:
+    try:
+        import call_tracker as _call_tracker        # type: ignore  # 独立运行(同目录可选)
+    except Exception:
+        _call_tracker = None
 
 PREFILL_TPS = 1500.0
 DECODE_TPS = 35.0
@@ -1130,10 +1133,13 @@ _sql_state: dict = {"con": None, "lock": threading.Lock(), "build_s": None, "dir
 
 
 def sql_tables_dir():
-    """7 张 CSV 全在的目录; 找不到返回 None(执行判分不可用, 自动回退评委/未评分)。"""
+    """7 张 CSV 全在的目录; 找不到返回 None(执行判分不可用, 自动回退评委/未评分)。
+    候选含两种部署: 独立运行(项目 tables/ 或 data/sql_tables)与工具箱容器(/app/data/sql_tables)。"""
     here = os.path.dirname(os.path.abspath(__file__))
     cands = [os.environ.get("QTEST_SQL_TABLES"), os.environ.get("QUALITY_SQL_TABLES"),
-             os.path.join(here, "tables"), os.path.join(here, "data", "sql_tables")]
+             os.environ.get("MENGKE_SQL_TABLES"),
+             os.path.join(here, "tables"), os.path.join(here, "data", "sql_tables"),
+             "/app/data/sql_tables", "/app/data/quality/tables"]
     for c in cands:
         if c and all(os.path.exists(os.path.join(c, t + ".csv")) for t in SQL_TABLE_NAMES):
             return os.path.abspath(c)
