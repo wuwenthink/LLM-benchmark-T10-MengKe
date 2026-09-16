@@ -482,7 +482,9 @@ async def start_run(req: RunRequest):
     judge_ep = None
     if req.subjective_judge and req.subjective_judge.get("enabled"):
         judge_ep = {"base_url": req.subjective_judge["base_url"],
-                    "model": req.subjective_judge["model"]}
+                    "model": req.subjective_judge["model"],
+                    # 公共 API 评委(DeepSeek/OpenAI 等)需要 Bearer Key, 与端点行一样支持
+                    "api_key": req.subjective_judge.get("api_key")}
 
     def progress_cb(done, total):
         if resume_meta:
@@ -670,34 +672,166 @@ async def status():
 
 class _PreflightIn(BaseModel):
     bases: list[str]
+    # 通用 OpenAI 端点支持: 可只传 bases(旧行为), 也可传完整 endpoints(含 api_key/model)
+    endpoints: Optional[list[dict]] = None
+
+
+class _TestEpItem(BaseModel):
+    name: Optional[str] = None
+    base_url: str = ""
+    model: Optional[str] = None
+    api_key: Optional[str] = None
+    thinking: Optional[bool] = None
+
+
+class _TestEpIn(BaseModel):
+    endpoints: list[_TestEpItem] = []
+    # 评委端点(可选, 与评测里的 subjective_judge 同结构)
+    judge: Optional[dict] = None
+
+
+async def _probe_openai_ep(base_url: str, model: str = "", api_key: str = "",
+                           model_hint: bool = True) -> dict:
+    """通用 OpenAI 兼容端点探测(与评测同网络路径, 避开浏览器 CORS)。
+
+    两级判定, 避免"没有 /v1/models 的好端点被误判不可达":
+      1) GET  {base}/v1/models  —— 能列出模型最好, 顺便校验模型名是否存在
+      2) 否则 POST {base}/v1/chat/completions(max_tokens=1) —— 真发一次最小请求
+    两级都会自动尝试 base_url 的两种写法(带/不带 /v1; 允许直接粘贴完整 URL),
+    公共 API(DeepSeek/OpenAI 等)带 Bearer API Key。
+    返回 {ok, url, mode, models, model_found, latency_ms, error, hint}
+    """
+    import httpx
+
+    base_url = (base_url or "").strip()
+    model = (model or "").strip()
+    if not base_url:
+        return {"ok": False, "url": "", "mode": None, "models": [], "model_found": None,
+                "latency_ms": 0, "error": "base_url 为空", "hint": "请填写 OpenAI 兼容服务地址"}
+    headers = {"Authorization": "Bearer " + api_key} if api_key else None
+    t0 = time.time()
+    last_err = ""
+    last_status = 0
+    net_down = False   # 连接层就失败(地址不通) -> 同一主机的其它写法/阶段不必再试, 立即返回
+
+    # connect=2.5s: 地址不通时快速失败(Windows 上被防火墙丢弃的连接会挂到总超时, 体验很差)
+    async with httpx.AsyncClient(timeout=httpx.Timeout(8.0, connect=2.5), follow_redirects=True) as c:
+        # 1) /v1/models
+        for url in qe.openai_url_candidates(base_url, "/models"):
+            try:
+                r = await c.get(url, headers=headers)
+            except (httpx.ConnectError, httpx.ConnectTimeout, httpx.ReadTimeout) as e:
+                last_err = f"{type(e).__name__}: {str(e)[:90]}"
+                net_down = True
+                break
+            except Exception as e:
+                last_err = f"{type(e).__name__}: {str(e)[:90]}"
+                continue
+            last_status = r.status_code
+            if r.status_code == 200:
+                ids = []
+                try:
+                    ids = [str(m.get("id", "")) for m in (r.json().get("data") or []) if m.get("id")]
+                except Exception:
+                    ids = []
+                found = None
+                if model and ids:
+                    found = model in ids
+                    if not found:  # 容忍 "deepseek-chat" vs "deepseek-chat-0324" 这类前缀差异
+                        found = any(i.startswith(model) or model.startswith(i) for i in ids)
+                return {"ok": True, "url": url, "mode": "models", "models": ids[:60],
+                        "model_found": found, "latency_ms": int((time.time() - t0) * 1000),
+                        "error": None, "hint": ""}
+            last_err = f"HTTP {r.status_code}"
+        # 2) 最小 chat 请求(有些服务不实现 /models)
+        if not net_down:
+            for url in qe.openai_url_candidates(base_url, "/chat/completions"):
+                body = {"model": model or "default", "messages": [{"role": "user", "content": "ping"}],
+                        "max_tokens": 1, "temperature": 0, "stream": False}
+                try:
+                    r = await c.post(url, json=body, headers=headers)
+                except (httpx.ConnectError, httpx.ConnectTimeout, httpx.ReadTimeout) as e:
+                    last_err = f"{type(e).__name__}: {str(e)[:90]}"
+                    break
+                except Exception as e:
+                    last_err = f"{type(e).__name__}: {str(e)[:90]}"
+                    continue
+                last_status = r.status_code
+                if 200 <= r.status_code < 300:
+                    return {"ok": True, "url": url, "mode": "chat", "models": [],
+                            "model_found": None, "latency_ms": int((time.time() - t0) * 1000),
+                            "error": None,
+                            "hint": "" if model else "该服务不提供 /v1/models, 请手动填写模型名"}
+                snippet = ""
+                try:
+                    snippet = r.text[:160]
+                except Exception:
+                    pass
+                last_err = f"HTTP {r.status_code}" + (f": {snippet}" if snippet else "")
+
+    hint = qe._endpoint_hint(last_status, model or "<模型名>", base_url)
+    if net_down and not hint:
+        hint = " 提示: 地址连不上 —— 请确认服务已启动、端口正确、本机可访问(远程地址注意防火墙)"
+    return {"ok": False, "url": (qe.openai_url_candidates(base_url, "/chat/completions") or [""])[0],
+            "mode": None, "models": [], "model_found": None,
+            "latency_ms": int((time.time() - t0) * 1000),
+            "error": last_err or "连接失败", "hint": hint.strip()}
+
+
+@router.post("/test_endpoint")
+async def test_endpoint(req: _TestEpIn):
+    """「测试连接」: 逐个探测端点(含评委), 返回是否连通 + 模型列表 + 延迟 + 失败原因。
+
+    走服务端探测(与评测同一网络路径), 因此浏览器 CORS / HTTPS 混合内容都不影响结果;
+    DeepSeek 等公共 API 只要在端点行填了 API Key 就能连通。
+    """
+    items = []
+    for e in (req.endpoints or [])[:10]:
+        items.append(e.model_dump() if hasattr(e, "model_dump") else dict(e))
+    if req.judge and (req.judge.get("base_url") or "").strip():
+        items.append({"name": (req.judge.get("name") or "评委端点"),
+                      "base_url": req.judge.get("base_url"), "model": req.judge.get("model"),
+                      "api_key": req.judge.get("api_key"), "is_judge": True})
+    if not items:
+        return {"ok": True, "results": []}
+    results = await asyncio.gather(*[
+        _probe_openai_ep(it.get("base_url") or "", it.get("model") or "", it.get("api_key") or "")
+        for it in items])
+    out = []
+    for it, r in zip(items, results):
+        r = dict(r)
+        r["name"] = it.get("name") or it.get("model") or it.get("base_url")
+        r["base_url"] = it.get("base_url")
+        r["model"] = it.get("model") or ""
+        r["is_judge"] = bool(it.get("is_judge"))
+        out.append(r)
+    return {"ok": True, "results": out, "n_ok": sum(1 for r in out if r["ok"]), "n": len(out)}
 
 
 @router.post("/preflight")
 async def preflight(req: _PreflightIn):
-    """启动前预检: 由服务端探测各端点 /v1/models(与评测同网络路径, 避开浏览器 CORS)。"""
-    import asyncio
-    import httpx
+    """启动前预检: 由服务端探测各端点(与评测同网络路径, 避开浏览器 CORS)。
 
-    async def probe(base: str) -> dict:
-        # 与引擎同规则: base 允许带 /v1 或 /v1/ 后缀, 不重复拼接(此前探成 /v1/v1/models
-        # → HTTP 404 → 活端点被误判"不可达", 直接把用户拦在起跑线外)
-        base = base.rstrip("/")
-        url = base + "/models" if base.endswith("/v1") else base + "/v1/models"
-        try:
-            async with httpx.AsyncClient(timeout=6) as c:
-                r = await c.get(url)
-                ids: list[str] = []
-                try:
-                    ids = [m.get("id", "") for m in (r.json().get("data") or [])][:4]
-                except Exception:
-                    pass
-                ok = r.status_code == 200
-                return {"ok": ok, "models": ids, "error": None if ok else f"HTTP {r.status_code}"}
-        except Exception as e:
-            return {"ok": False, "models": [], "error": (type(e).__name__ + ": " + str(e))[:90]}
-
-    results = await asyncio.gather(*[probe(b) for b in (req.bases or [])[:10]])
-    return {"ok": True, "results": list(results)}
+    2026-09-17 修复「公共 API 被误判不可达而拦住评测」:
+      - 旧实现只探 /v1/models 且**不带 API Key** → DeepSeek 等鉴权服务一律 401,
+        全部端点"不可达"时直接阻止开跑;
+      - 现在改为两级探测(见 _probe_openai_ep): /v1/models 失败就真发一次最小 chat 请求,
+        并携带端点自己的 API Key, base_url 写法也自动容错。
+    兼容旧调用: 只传 bases 时按无 Key 探测。
+    """
+    eps = []
+    if req.endpoints:
+        for e in req.endpoints:
+            eps.append((str(e.get("base_url") or ""), str(e.get("model") or ""),
+                        str(e.get("api_key") or "")))
+    else:
+        eps = [(b, "", "") for b in (req.bases or [])]
+    eps = [e for e in eps if e[0].strip()][:10]
+    results = await asyncio.gather(*[_probe_openai_ep(b, m, k) for b, m, k in eps])
+    simple = [{"ok": r["ok"], "models": r["models"], "error": r["error"],
+               "mode": r["mode"], "url": r["url"], "latency_ms": r["latency_ms"],
+               "hint": r.get("hint", ""), "model_found": r.get("model_found")} for r in results]
+    return {"ok": True, "results": simple}
 
 
 @router.get("/live")

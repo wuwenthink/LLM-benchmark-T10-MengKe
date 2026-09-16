@@ -39,15 +39,31 @@ bash start.sh
 
 ## 端点（被测模型）怎么填
 
-页面底部「端点列表」手动填写 OpenAI 兼容推理服务：
-- **名称（= 测试名称）**：**留空即默认显示模型名称**（如 `qwen2.5-7b-instruct`），需要区分时才自定义（如 `demo-box:8000`）
-- base_url：如 `http://127.0.0.1:8000`（不要带 `/v1`，程序会自动补）
-- model：如 `qwen2.5-7b-instruct`
-- API Key：需要鉴权的服务才填（只用于请求头，不会落盘到历史记录）
-- 思考：模型带思考模式（reasoning）就打勾
+**任意 OpenAI 兼容服务都能接入**，不要求由哪个工具箱/框架启动 —— 本地 vLLM / llama.cpp /
+Ollama / LM Studio / TGI / SGLang，以及 DeepSeek、OpenAI、Moonshot 等**公共 API** 都可以。
 
-> 「🔄 自动获取运行中推理」按钮默认提示无进程：本工具不扫描任何集群。
-> 若你的部署能提供推理实例清单，按 `server.py` 里 `/api/snapshot` 的注释实现该接口即可一键生成端点。
+页面「端点列表」手动填写，点 **「🔌 测试连接」** 即可当场验证是否连通：
+
+- **名称（= 测试名称）**：**留空即默认显示模型名称**（如 `qwen2.5-7b-instruct`），需要区分时才自定义（如 `demo-box:8000`）
+- base_url：`http://127.0.0.1:8000`、`http://127.0.0.1:11434`（Ollama）、`https://api.deepseek.com`……
+  带不带 `/v1` 都行，直接粘贴完整地址（`https://api.deepseek.com/v1/chat/completions`）也行，程序会自动归一
+- model：如 `qwen2.5-7b-instruct`、`deepseek-chat`；点「测试连接」会列出该服务可用模型名，空着会自动补全
+- API Key：**公共 API（DeepSeek/OpenAI 等）必填**，本地服务可留空；填了会以 `Authorization: Bearer <key>` 发送
+- 思考：模型带思考模式（reasoning）就打勾（会给 `max_tokens` 留更大预算）
+
+「🔌 测试连接」做了什么：先 `GET {base}/v1/models`（顺带列出可用模型名、核对模型名是否存在），
+失败就真发一次 `max_tokens=1` 的最小 chat 请求；结果会逐端点显示 ✅/❌、延迟、可用模型与失败原因
+（401 → 提示填 API Key；404 → 提示 base_url/模型名；连接失败 → 提示服务未启动/端口/防火墙）。
+评委（LLM-Judge）端点也会一起测。
+
+> 评测启动前的预检用的是同一套探测，因此**没有 `/v1/models` 的公共 API 不会再被误判为不可达**。
+> 公共 API 还可以拒绝非标准参数（如 `chat_template_kwargs`）或限制 `max_tokens`，
+> 引擎遇到 HTTP 400 会自动去掉扩展字段、收敛预算后重试一次。
+
+> 「🔄 自动获取运行中推理」按钮**只能从梦客工具箱获取**：没启动工具箱时会弹窗提示
+> 「本按钮只能通过梦客工具箱获取API，当前无工具箱启动，请手动填写。」——此时请手动填写端点，
+> 并用「🔌 测试连接」验证。若你的部署能提供推理实例清单，按 `server.py` 里 `/api/snapshot`
+> 的注释实现该接口即可一键生成端点。
 
 ## 目录结构
 
@@ -103,3 +119,16 @@ MIT，见 `LICENSE`。
   - 热力图在「按题目 / 按 Benchmark」与「格子矩阵」之间来回切换时正确重绘。
   - humaneval 代码题真正执行 `check(candidate)`（此前任何能编译的实现都判满分）。
   - BFCL 工具调用改用标准嵌套结构传递并对齐评分（此前单轮/多轮 BFCL 恒 0 分）；`expected` 为空时按「不得调用」判分。
+- 2026-09-17 通用 OpenAI 端点接入：
+  - **不再要求被测服务由梦客工具箱启动**：任意 OpenAI 兼容服务（本地 vLLM/llama.cpp/Ollama/LM Studio）
+    与公共 API（DeepSeek/OpenAI 等）都能接入；`base_url` 带不带 `/v1`、直接粘贴完整
+    `.../v1/chat/completions` 都会自动归一，路径不对自动换写法重试。
+  - 公共 API 支持：端点行与 Judge 行都新增 API Key（`Authorization: Bearer`）；
+    公共 API 以 HTTP 400 拒绝非标准参数（如 `chat_template_kwargs`）或 `max_tokens` 超限时，
+    引擎自动去掉扩展字段、收敛预算重试一次。
+  - **修复「公共 API 被误判不可达而拦住评测」**：启动前预检此前只探 `/v1/models` 且不带 API Key，
+    DeepSeek 这类鉴权服务一律 401 → 全部端点"不可达"直接阻止开跑；现在两级探测
+    （`/v1/models` 失败就真发一次最小 chat 请求）并携带 API Key。
+  - 新增 **「🔌 测试连接」** 按钮：逐端点（含评委）显示 ✅/❌、延迟、可用模型列表、模型名是否匹配，
+    失败给出可操作提示（401→填 Key；404→查 base_url/模型名；连不上→查服务/端口/防火墙）；
+    顺手把空模型名按服务返回列表补全。

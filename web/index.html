@@ -81,6 +81,12 @@ tr:hover td{background:var(--panel-2)}
 .endpoint-row{display:grid;grid-template-columns:1fr 1.2fr 1fr .8fr auto;gap:6px;margin-bottom:6px;align-items:center}
 .endpoint-row .ck{display:flex;align-items:center;gap:4px;color:var(--muted);font-size:12px;white-space:nowrap}
 .endpoint-row .ep-ops{display:flex;align-items:center;gap:6px;justify-content:flex-end}
+/* 「测试连接」结果面板 */
+.ep-test-box{margin-top:8px;border:1px solid var(--line);border-radius:8px;padding:8px 10px;background:var(--panel-2)}
+.ep-test-head{font-weight:700;font-size:13px;display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.ep-test-head .ep-test-close{margin-left:auto;padding:2px 8px}
+.ep-test-row{padding:5px 0;border-top:1px dashed var(--line);font-size:12px;line-height:1.55}
+.ep-test-row .ep-test-name{font-weight:700;margin-right:6px}
 .heatmap-wrap{overflow:auto;max-height:560px;border:1px solid var(--line);border-radius:8px}
 .heatmap-wrap table{white-space:nowrap}
 .heatmap-wrap th,.heatmap-wrap td{padding:3px 6px;text-align:center}
@@ -322,9 +328,11 @@ tr:hover td{background:var(--panel-2)}
       <div id="endpoints"></div>
       <div class="row" style="margin-top:6px">
         <button id="addEp">＋ 添加端点</button>
-        <button id="autoEp" title="从部署环境的推理状态接口(/api/snapshot)读取正在运行的推理服务并自动生成端点；接口为空时请在下方手动填写">🔄 自动获取运行中推理</button>
+        <button id="autoEp" title="只能从梦客工具箱的推理状态接口(/api/snapshot)获取正在运行的推理服务；未启动工具箱时请手动填写端点。任意 OpenAI 兼容服务(含 DeepSeek 等公共 API)都可以手动填写后用「测试连接」验证">🔄 自动获取运行中推理</button>
+        <button id="testEp" title="逐个测试端点连通性：自动补全 /v1 路径与模型名，公共 API(DeepSeek 等)需先在端点行填 API Key。测试结果会显示延迟、可用模型列表与失败原因">🔌 测试连接</button>
         <button id="resetEp">恢复默认</button>
       </div>
+      <div id="epTestResult"></div>
 
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
         <div>
@@ -381,9 +389,11 @@ tr:hover td{background:var(--panel-2)}
       </label>
       <div id="judgeBox" style="display:none">
         <label>Judge 端点 base_url</label>
-        <input type="text" id="judgeBase" value="http://127.0.0.1:8000" placeholder="http://host:port">
+        <input type="text" id="judgeBase" value="http://127.0.0.1:8000" placeholder="http://host:port 或 https://api.deepseek.com">
         <label>Judge 模型</label>
-        <input type="text" id="judgeModel" value="" placeholder="judge-model-name">
+        <input type="text" id="judgeModel" value="" placeholder="judge-model-name（如 deepseek-chat）">
+        <label>Judge API Key（公共 API 必填）</label>
+        <input type="password" id="judgeKey" value="" placeholder="sk-...(本地服务可留空)">
       </div>
 
       <div class="row" style="margin-top:16px">
@@ -557,7 +567,8 @@ function saveCfg(){
     qTimeout:+$("#qTimeout").value||300,
     retries:+$("#retries").value||0,
     diffSel:[...document.querySelectorAll(".diff-sel:checked")].map(e=>e.value),
-    judgeEnabled:$("#judgeEnabled").checked, judgeBase:$("#judgeBase").value, judgeModel:$("#judgeModel").value}));
+    judgeEnabled:$("#judgeEnabled").checked, judgeBase:$("#judgeBase").value, judgeModel:$("#judgeModel").value,
+    judgeKey:($("#judgeKey")?$("#judgeKey").value:"")}));
 }
 function renderEndpoints(eps){
   $("#endpoints").innerHTML="";
@@ -573,9 +584,14 @@ function renderEndpoints(eps){
    本页即可一键生成端点列表。字段缺失时按「hosts[host_id].display_ip + api_port」兜底。 */
 /* 自动填写时对「思考模式」的猜测规则: 模型名命中即默认勾选「思考」 */
 const THINKING_HINT_RE=/(think|reason|\br1\b|qwq|cot)/i;
+// 自动获取按钮只能从梦客工具箱拿推理清单; 拿不到时统一用这句提示(用户指定文案)
+const NO_BOX_MSG="本按钮只能通过梦客工具箱获取API，当前无工具箱启动，请手动填写。";
 async function autoFillEndpoints(){
   let snap;
-  try{snap=await api("/api/snapshot")}catch(e){alert("读取推理状态失败: "+e.message);return}
+  try{snap=await api("/api/snapshot")}catch(e){
+    alert(NO_BOX_MSG+"\n\n（读取梦客工具箱推理状态接口失败："+e.message
+      +"）\n\n提示：任意 OpenAI 兼容服务都可以在下面手动填写 base_url + 模型名，填完点「🔌 测试连接」即可验证是否可用（本地 vLLM/llama.cpp/Ollama/LM Studio、以及 DeepSeek 等公共 API 都支持）。");
+    return}
   const hosts=snap.hosts||{};
   const eps=[];const seen=new Set();
   (snap.inferences||[]).forEach(inf=>{
@@ -590,15 +606,87 @@ async function autoFillEndpoints(){
       seen.add(base);
       const model=inst.served_model_name||inst.model||"";
       // 测试名称默认用模型名称(可在页面上改成自定义名)
-      eps.push({name:model,base_url:base,model,thinking:THINKING_HINT_RE.test(model),api_key:null});
+      eps.push({name:model,base_url:base,model,thinking:THINKING_HINT_RE.test(model),api_key:inst.api_key||null});
     });
   });
-  if(!eps.length){alert("没有取到正在运行的推理服务（请在端点列表手动填写 base_url / model）");return}
+  if(!eps.length){
+    alert(NO_BOX_MSG+"\n\n（梦客工具箱接口本次没有返回正在运行的推理服务）\n\n手动填写示例：\n  · 本地 vLLM/llama.cpp：http://127.0.0.1:8000 + 模型名\n  · Ollama：http://127.0.0.1:11434 + 模型名\n  · DeepSeek 公共 API：https://api.deepseek.com + deepseek-chat，并在端点行填 API Key");
+    return}
   const preview=eps.slice(0,8).map(e=>`  ${e.base_url}  (${e.model||"未知模型"})`).join("\n");
   if(!confirm(`检测到 ${eps.length} 个正在运行的推理 API 入口：\n${preview}\n\n将替换当前端点列表（超过 8 个只取前 8）。继续？`))return;
   renderEndpoints(eps.slice(0,8));
   saveCfg();
   if(eps.length>8)alert("注意: 超过 8 个端点已被截断（评测端点上限 8，防止请求风暴）");
+}
+
+/* ---------- 🔌 测试连接: 逐个探测端点(含评委)是否真能用 ----------
+   后端 /api/quality/test_endpoint 走服务端探测(与评测同网络路径, 不受浏览器 CORS 影响):
+     1) GET  {base}/v1/models —— 顺带列出可用模型名
+     2) 失败则 POST {base}/v1/chat/completions(max_tokens=1) 真发一次最小请求
+   base_url 带不带 /v1 都行, 直接粘贴完整 ".../v1/chat/completions" 也行;
+   DeepSeek 等公共 API 只要在端点行/Judge 行填了 API Key 就能连通。 */
+async function testEndpoints(){
+  const eps=currentEndpoints();
+  if(!eps.length||eps.some(e=>!e.base_url.trim())){alert("请先填写端点的 base_url 再测试连接");return}
+  const jOn=$("#judgeEnabled")&&$("#judgeEnabled").checked&&$("#judgeBase").value.trim();
+  const judge=jOn?{base_url:$("#judgeBase").value.trim(),model:$("#judgeModel").value.trim(),
+                   api_key:($("#judgeKey")?$("#judgeKey").value.trim():"")||null,name:"评委端点"}:null;
+  const btn=$("#testEp");const old=btn.textContent;
+  btn.disabled=true;btn.textContent="⏳ 测试中…";
+  let r=null;
+  try{
+    r=await api("/api/quality/test_endpoint",{method:"POST",headers:{"Content-Type":"application/json"},
+      body:JSON.stringify({endpoints:eps.map(e=>({name:e.name,base_url:e.base_url,model:e.model,
+        api_key:e.api_key,thinking:e.thinking})),judge})});
+  }catch(e){alert("测试连接失败: "+e.message)}
+  finally{btn.disabled=false;btn.textContent=old}
+  if(!r)return;
+  renderEpTest(r);
+  const bad=(r.results||[]).filter(x=>!x.ok);
+  if(!bad.length)alert(`✅ 连接成功：${r.n_ok}/${r.n} 个端点均可用`);
+  else alert(`⚠ 连接测试：${r.n_ok}/${r.n} 个端点可用，以下失败：\n`
+    +bad.map(x=>`  ${x.name||""} ${x.base_url}\n    → ${x.error}${x.hint?"\n    →"+x.hint:""}`).join("\n"));
+}
+function renderEpTest(r){
+  const box=$("#epTestResult");
+  const rows=(r.results||[]).map(x=>{
+    const det=[];
+    if(x.ok){
+      det.push(`<b style="color:var(--ok)">✅ 连接成功</b>`);
+      det.push(`${x.latency_ms} ms`);
+      if(x.mode==="models")det.push(x.models&&x.models.length?`/v1/models 可用（${x.models.length} 个模型）`:"/v1/models 可用");
+      else det.push("服务无 /v1/models，已用最小 chat 请求验证");
+      if(x.model_found===true)det.push("模型名已确认");
+      else if(x.model_found===false)det.push(`<span style="color:var(--amber)">⚠ 填写的模型名「${esc(x.model)}」不在该服务的模型列表里</span>`);
+      if(x.mode==="models"&&x.models&&x.models.length&&!x.model)det.push(`可用：${esc(x.models.slice(0,4).join(", "))}`);
+    }else{
+      det.push(`<b style="color:var(--err)">❌ 连接失败</b>`);
+      det.push(esc(x.error||"未知错误"));
+      if(x.hint)det.push(`<span style="color:var(--amber)">${esc(x.hint.trim())}</span>`);
+    }
+    return `<div class="ep-test-row"><span class="ep-test-name">${x.is_judge?"🧑‍⚖️ ":""}${esc(x.name||"")}</span>`
+      +`<span class="muted-2" style="font-size:11px">${esc(x.base_url||"")}</span>`
+      +`<div style="margin-top:2px">${det.join(" · ")}</div></div>`;
+  }).join("");
+  box.innerHTML=`<div class="ep-test-box"><div class="ep-test-head">🔌 连接测试结果：${r.n_ok}/${r.n} 个端点可用`
+    +`<span class="muted-2" style="font-weight:400">（优先 GET /v1/models，失败则真发一次最小 chat 请求）</span>`
+    +`<button class="ep-test-close" title="收起">✕</button></div>${rows}</div>`;
+  box.querySelector(".ep-test-close").onclick=()=>{box.innerHTML=""};
+  // 端点行标绿/标红, 顺手用服务返回的模型名补全空着的端点
+  const rowsEl=[...document.querySelectorAll("#endpoints .endpoint-row")];
+  let filled=false;
+  (r.results||[]).forEach(x=>{
+    if(x.is_judge)return;
+    const norm=s=>String(s||"").trim().replace(/\/+$/,"");
+    const row=rowsEl.find(d=>{const b=d.querySelector(".ep-base");return b&&norm(b.value)===norm(x.base_url)});
+    if(!row)return;
+    row.style.borderLeft=x.ok?"3px solid var(--ok)":"3px solid var(--err)";
+    row.style.paddingLeft="6px";
+    const mi=row.querySelector(".ep-model");
+    if(x.ok&&mi&&!mi.value.trim()&&x.models&&x.models.length){mi.value=x.models[0];filled=true}
+  });
+  if(filled){saveCfg();box.querySelector(".ep-test-head").insertAdjacentHTML("beforeend",
+    `<span class="muted" style="font-weight:400;font-size:12px">已自动补全空模型名</span>`)}
 }
 function endpointRow(ep){
   const d=document.createElement("div");d.className="endpoint-row";
@@ -647,12 +735,14 @@ function initCfg(){
   $("#diffNone").onclick=()=>{document.querySelectorAll(".diff-sel").forEach(e=>e.checked=false);saveCfg()};
   $("#judgeEnabled").checked=!!cfg.judgeEnabled;
   $("#judgeBase").value=cfg.judgeBase;$("#judgeModel").value=cfg.judgeModel;
+  if($("#judgeKey"))$("#judgeKey").value=cfg.judgeKey||"";
   $("#judgeBox").style.display=cfg.judgeEnabled?"block":"none";
   $("#addEp").onclick=()=>{$("#endpoints").appendChild(endpointRow({name:"",base_url:"",model:"",thinking:false}));saveCfg()};
   $("#autoEp").onclick=autoFillEndpoints;
+  $("#testEp").onclick=testEndpoints;
   $("#resetEp").onclick=()=>{renderEndpoints(DEFAULTS);saveCfg()};
   $("#tier")&&$("#tier").addEventListener("change",saveCfg);
-  ["#concurrency","#sampleN","#rounds","#maxTokens","#temperature","#qTimeout","#retries","#judgeBase","#judgeModel"].forEach(s=>$(s).addEventListener("input",saveCfg));
+  ["#concurrency","#sampleN","#rounds","#maxTokens","#temperature","#qTimeout","#retries","#judgeBase","#judgeModel","#judgeKey"].forEach(s=>$(s)&&$(s).addEventListener("input",saveCfg));
   document.querySelectorAll(".diff-sel").forEach(e=>e.addEventListener("change",saveCfg));
   $("#judgeEnabled").addEventListener("change",e=>{
     const on=e.target.checked;
@@ -728,14 +818,19 @@ async function startRun(){
   // 启动前预检(容器内探 /v1/models, 与评测同网络路径): 拦住死端点, 避免跑 4 题熔断「悄悄失败」
   try{
     const _bases=eps.map(e=>e.base_url);
+    const _epsBody=eps.map(e=>({base_url:e.base_url,model:e.model,api_key:e.api_key}));
     const _judgeIdx=$("#judgeEnabled").checked&&$("#judgeBase").value.trim()?_bases.push($("#judgeBase").value.trim())-1:-1;
-    const _pf=await api("/api/quality/preflight",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({bases:_bases})});
-    const _dead=[];(_pf.results||[]).forEach((r,i)=>{if(!r.ok)_dead.push({base:_bases[i],judge:i===_judgeIdx,err:r.error||"不可达"})});
+    if(_judgeIdx>=0)_epsBody.push({base_url:$("#judgeBase").value.trim(),model:$("#judgeModel").value.trim(),
+      api_key:($("#judgeKey")?$("#judgeKey").value.trim():"")||null});
+    // 2026-09-17: 预检改为携带 API Key 的通用 OpenAI 探测(公共 API 不再被 401 误判为不可达)
+    const _pf=await api("/api/quality/preflight",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({bases:_bases,endpoints:_epsBody})});
+    const _dead=[];(_pf.results||[]).forEach((r,i)=>{if(!r.ok)_dead.push({base:_bases[i],judge:i===_judgeIdx,err:r.error||"不可达",hint:r.hint||""})});
     if(_dead.length===_bases.length){
-      alert("❌ 预检失败：所有端点均不可达 —\n"+_dead.map(d=>`  ${d.base}${d.judge?"（评委）":""} → ${d.err}`).join("\n")+"\n\n推理可能已停止。请点「🔄 自动获取运行中推理」重新拉取当前在服务的推理，或先到启动页拉起推理。");return}
+      alert("❌ 预检失败：所有端点均不可达 —\n"+_dead.map(d=>`  ${d.base}${d.judge?"（评委）":""} → ${d.err}${d.hint?"\n   "+d.hint:""}`).join("\n")
+        +"\n\n若端点是 DeepSeek/OpenAI 等公共 API，请在端点行的「API Key」里填密钥；本地服务请确认地址与模型名（可点「🔌 测试连接」逐个排查）。");return}
     if(_dead.length){
       const dj=_dead.filter(d=>d.judge), de=_dead.filter(d=>!d.judge);
-      const dl=_dead.map(d=>`  ${d.base}${d.judge?"（评委）":""} → ${d.err}`).join("\n");
+      const dl=_dead.map(d=>`  ${d.base}${d.judge?"（评委）":""} → ${d.err}${d.hint?"\n   "+d.hint:""}`).join("\n");
       let msg=`⚠ 预检发现不可达端点：\n${dl}\n\n`;
       if(de.length)msg+="「确定」= 剔除死端点后仅用可达端点开始评测\n「取消」= 回去修改端点";
       else msg+="（评委端点不可达：客观题照常评分，主观题/SQL 判分会失败并计入错误。建议先去设置评委端点。）\n「确定」= 继续，「取消」= 回去修改";
@@ -753,7 +848,8 @@ async function startRun(){
   const dsel=[...document.querySelectorAll(".diff-sel:checked")].map(e=>e.value);
   if(dsel.length&&dsel.length<3)body.difficulty_filter=dsel;
   if($("#judgeEnabled").checked&&$("#judgeBase").value.trim()){
-    body.subjective_judge={enabled:true,base_url:$("#judgeBase").value.trim(),model:$("#judgeModel").value.trim()};
+    body.subjective_judge={enabled:true,base_url:$("#judgeBase").value.trim(),model:$("#judgeModel").value.trim(),
+      api_key:($("#judgeKey")?$("#judgeKey").value.trim():"")||null};
   }
   try{
     if(_deadSet.size){body.endpoints=body.endpoints.filter(e=>!_deadSet.has(e.base_url.replace(/\/+$/,"")));
@@ -1698,6 +1794,11 @@ async function resumeRun(rec){
   });
   if(!eps.length){alert("原运行缺少端点信息, 无法续跑");return}
   let sj=m.subjective_judge||null;
+  // 公共 API 评委需要 Key: 原运行没记 Key 时, 按当前界面的 Judge 配置兜底(地址一致才用)
+  if(sj&&!sj.api_key&&$("#judgeKey")&&$("#judgeKey").value.trim()
+     &&String(sj.base_url||"").replace(/\/+$/,"")===$("#judgeBase").value.trim().replace(/\/+$/,"")){
+    sj=Object.assign({},sj,{api_key:$("#judgeKey").value.trim()});
+  }
   // 2026-09-14: SQL 判分已改为真实执行比对, 续跑不再强制启用评委。
   // 原运行带了评委就沿用; 没带也不拦截(司判层会自动用 SQLite 执行判分)。
   if(!confirm(`断点续测 · 运行 #${rec.run_id}（${m.tier||""}）\n`+

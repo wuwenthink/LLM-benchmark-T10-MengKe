@@ -631,31 +631,161 @@ async def _aiter_lines_with_idle(resp, idle_timeout: float):
         yield line
 
 
+# ---------------------------------------------------------------------------
+# 通用 OpenAI 兼容端点工具
+#   目标: 任何 OpenAI 格式的服务都能接入 —— 本地 vLLM / llama.cpp / Ollama /
+#   LM Studio, 以及 DeepSeek、OpenAI 等公共 API(带 Bearer API Key), 不要求
+#   服务是由哪个工具箱启动的。
+#   用户填 base_url 的写法五花八门, 这里统一容错(见 openai_url_candidates)。
+# ---------------------------------------------------------------------------
+# OpenAI 官方支持的请求字段; 其余字段(如 vLLM 的 chat_template_kwargs)属非标准扩展,
+# 公共 API 可能直接 400 拒绝, 因此 400 时用"只保留标准字段"的载荷重试一次。
+_OPENAI_STD_KEYS = {
+    "model", "messages", "max_tokens", "max_completion_tokens", "temperature", "stream",
+    "stream_options", "tools", "tool_choice", "stop", "top_p", "n", "seed",
+    "presence_penalty", "frequency_penalty", "logprobs", "top_logprobs", "response_format",
+    "user", "parallel_tool_calls", "reasoning_effort",
+}
+# 公共 API 的 max_tokens 上限普遍较低(如 8192), 超限会被 400 拒绝 → 降级时收敛
+_PUBLIC_MAX_TOKENS_CAP = 8192
+
+
+def openai_base(base_url: str) -> str:
+    """把用户填的 base_url 归一成 OpenAI 兼容 API 根(结尾带 /v1)。
+
+    兼容这些常见写法:
+      http://127.0.0.1:8000                      -> http://127.0.0.1:8000/v1
+      http://127.0.0.1:8000/v1                   -> 原样
+      https://api.deepseek.com                   -> https://api.deepseek.com/v1
+      https://api.deepseek.com/v1/chat/completions -> https://api.deepseek.com/v1
+      http://gw/llm/v1                           -> 原样(自定义前缀不破坏)
+    """
+    b = (base_url or "").strip().rstrip("/")
+    if not b:
+        return ""
+    low = b.lower()
+    for suffix in ("/chat/completions", "/completions", "/models"):
+        if low.endswith(suffix):
+            b = b[: -len(suffix)].rstrip("/")
+            low = b.lower()
+            break
+    if not b:
+        return ""
+    if low.endswith("/v1") or "/v1/" in low:
+        return b
+    return b + "/v1"
+
+
+def openai_url_candidates(base_url: str, path: str) -> list:
+    """返回该 base_url 下 path 的候选 URL(去重、保序)。
+
+    第 1 个是归一后的标准写法; 第 2 个是"原样拼接"(服务没有 /v1 前缀时用)。
+    调用方在 404/405(路径不对)时按顺序回退, 于是 base_url 填法不再影响可用性。
+    """
+    raw = (base_url or "").strip().rstrip("/")
+    out = []
+    b = openai_base(raw)
+    if b:
+        out.append(b + path)
+    # 用户直接粘贴了某个完整接口路径(models/chat/completions)时, 不要再拼第二种写法
+    _full = ("/chat/completions", "/completions", "/models")
+    if raw and not raw.lower().endswith(path.lower()) and not raw.lower().endswith(_full):
+        cand = raw + path
+        if cand not in out:
+            out.append(cand)
+    return out
+
+
+def sanitize_openai_payload(payload: dict) -> dict:
+    """只保留 OpenAI 标准字段, 并把过大的 max_tokens 收敛到公共 API 常见上限。"""
+    q = {k: v for k, v in payload.items() if k in _OPENAI_STD_KEYS}
+    if isinstance(q.get("max_tokens"), int) and q["max_tokens"] > _PUBLIC_MAX_TOKENS_CAP:
+        q["max_tokens"] = _PUBLIC_MAX_TOKENS_CAP
+    return q
+
+
+def _endpoint_hint(status: int, model: str, base_url: str) -> str:
+    """按 HTTP 状态给一句可操作的提示(公共 API 接入最常见的四类错误)。"""
+    if status in (401, 403):
+        return " 提示: 需要鉴权 —— 请在端点行的「API Key」里填该服务的密钥(DeepSeek/OpenAI 等公共 API 必填)"
+    if status == 404:
+        return f" 提示: 路径或模型名不对 —— 请确认 base_url(可只填 https://api.deepseek.com)与模型名「{model}」"
+    if status == 429:
+        return " 提示: 触发限流/欠费 —— 降低并发数或稍后重试"
+    if status == 400:
+        return " 提示: 请求被服务拒绝 —— 公共 API 可能不支持 tools/思考参数, 可减少题量或关闭「思考」"
+    return ""
+
+
 async def call_endpoint(client, base_url, model, messages, tools=None, max_tokens=1024,
                         temperature=0.0, timeout=600, idle_timeout=IDLE_TIMEOUT, cancel_flag=None,
                         api_key=None, total_timeout=None, payload_extra: dict = None):
-    """OpenAI 兼容 chat/completions 流式调用。
+    """OpenAI 兼容 chat/completions 流式调用(通用端点, 含三级容错)。
 
+    - 端点只需是 OpenAI 兼容服务: base_url 可带/不带 /v1, 也可直接粘贴完整
+      ".../v1/chat/completions"; 需要鉴权的服务(DeepSeek 等公共 API)填 API Key 即可。
     - stream=True: 首字节尽早返回, 同时用 idle_timeout 看门狗检测卡死。
     - cancel_flag(可空): 置位后**立即中止在途请求** —— 取消消费任务并关闭连接
       (client.stream 上下文退出), vLLM 收到客户端断开会中止该请求释放显存槽位,
       而不是继续在后台计算。这是「停止按钮彻底关闭对推理 API 的占用」的关键。
+    - 容错重试: 404/405(路径写法不对)自动换另一种 base_url 写法; 400(公共 API 拒绝
+      非标准字段或 max_tokens 超限)自动去掉扩展字段并收敛预算重试一次。最多 4 次尝试。
     - 返回 {content, reasoning, tool_calls, finish, latency, usage} 或 {error, latency}。
     """
-    base = base_url.rstrip("/")
-    if not base.endswith("/v1"):
-        base += "/v1"
-    url = base + "/chat/completions"
     payload = {"model": model, "messages": messages, "max_tokens": max_tokens,
                "temperature": temperature, "stream": True}
     if tools:
         payload["tools"] = tools
     if payload_extra:
         payload.update(payload_extra)
+    attempts = []
+    for u in openai_url_candidates(base_url, "/chat/completions"):
+        attempts.append((u, payload))
+        san = sanitize_openai_payload(payload)
+        if san != payload:
+            attempts.append((u, san))
+    if not attempts:
+        return {"error": "base_url 为空", "latency": 0.0}
+
+    last = None
+    i = 0
+    while i < len(attempts):
+        url, pl = attempts[i]
+        res = await _call_once(client, url, pl, messages=messages, api_key=api_key,
+                               idle_timeout=idle_timeout, cancel_flag=cancel_flag,
+                               total_timeout=total_timeout, base_url=base_url, model=model)
+        if not res.get("_retry"):
+            res.pop("_retry", None)
+            res.pop("_status", None)
+            return res
+        last = res
+        status = res.get("_status") or 0
+        nxt = None
+        for k in range(i + 1, len(attempts)):
+            if status in (404, 405) and attempts[k][0] != url:
+                nxt = k
+                break
+            if status == 400 and attempts[k][1] != pl:
+                nxt = k
+                break
+        if nxt is None:
+            break
+        i = nxt
+    last = last or {"error": "请求未发出", "latency": 0.0}
+    last.pop("_retry", None)
+    status = last.pop("_status", 0) or 0
+    last["error"] = (last.get("error") or "") + _endpoint_hint(status, model, base_url)
+    return last
+
+
+async def _call_once(client, url, pl, messages, api_key=None, idle_timeout=IDLE_TIMEOUT,
+                     cancel_flag=None, total_timeout=None, base_url="", model=""):
+    """单次尝试。返回结果里带 _retry/_status 表示"换个 URL 或换份载荷还能再试"。"""
+    payload = pl
     t0 = time.time()
     tok = None
     if _call_tracker is not None:
-        tok = _call_tracker.begin(base_url, model, messages, kind="chat")
+        tok = _call_tracker.begin(base_url or url, model, messages, kind="chat")
     try:
         headers = {}
         if api_key:
@@ -674,7 +804,8 @@ async def call_endpoint(client, base_url, model, messages, tools=None, max_token
                 if tok is not None:
                     _call_tracker.end(tok, output="", error=err, messages=messages,
                                       extra={"latency": time.time() - t0, "status_code": r.status_code})
-                return {"error": err, "latency": time.time() - t0}
+                return {"error": err, "latency": time.time() - t0,
+                        "_retry": True, "_status": r.status_code}
 
             async def _consume():
                 content_parts: list[str] = []
@@ -842,7 +973,8 @@ async def run_bfcl_mt(client, ep, q, concurrency_ep, cancel_flag=None):
             if ep.get("thinking"):
                 mt = max(mt, 16384)
             resp = await call_endpoint(client, ep["base_url"], ep["model"], messages, tools=tools,
-                                       max_tokens=mt, cancel_flag=cancel_flag)
+                                       max_tokens=mt, cancel_flag=cancel_flag,
+                                       api_key=ep.get("api_key"))
             total_lat += resp.get("latency", 0)
             if resp.get("error"):
                 ratio = (sum(round_scores) + 0.0) / max(1, len(round_scores) + 1)
@@ -908,12 +1040,13 @@ async def judge_subjective(client, judge_ep, q, output, max_tokens=1024, cancel_
               f"Assistant: {str(output)[:4000]}")
     resp = await call_endpoint(client, judge_ep["base_url"], judge_ep["model"],
                                [{"role": "user", "content": prompt}], max_tokens=max_tokens,
-                               cancel_flag=cancel_flag, payload_extra=_JUDGE_NO_THINK)
+                               cancel_flag=cancel_flag, payload_extra=_JUDGE_NO_THINK,
+                               api_key=judge_ep.get("api_key"))
     if resp.get("error") and "cancelled" not in str(resp.get("error")):
         # 非 vLLM 评委端点可能拒绝 chat_template_kwargs -> 去掉扩展参数重试一次
         resp = await call_endpoint(client, judge_ep["base_url"], judge_ep["model"],
                                    [{"role": "user", "content": prompt}], max_tokens=max_tokens,
-                                   cancel_flag=cancel_flag)
+                                   cancel_flag=cancel_flag, api_key=judge_ep.get("api_key"))
     if resp.get("error"): return None
     return _parse_judge_score(resp)
 
@@ -935,12 +1068,13 @@ async def judge_sql(client, judge_ep, q, output, max_tokens=1024, cancel_flag=No
               "7-9=minor issues, 4-6=partially correct, 1-3=wrong or no SQL). Output ONLY the integer.")
     resp = await call_endpoint(client, judge_ep["base_url"], judge_ep["model"],
                                [{"role": "user", "content": prompt}], max_tokens=max_tokens,
-                               cancel_flag=cancel_flag, payload_extra=_JUDGE_NO_THINK)
+                               cancel_flag=cancel_flag, payload_extra=_JUDGE_NO_THINK,
+                               api_key=judge_ep.get("api_key"))
     if resp.get("error") and "cancelled" not in str(resp.get("error")):
         # 非 vLLM 评委端点可能拒绝 chat_template_kwargs -> 去掉扩展参数重试一次
         resp = await call_endpoint(client, judge_ep["base_url"], judge_ep["model"],
                                    [{"role": "user", "content": prompt}], max_tokens=max_tokens,
-                                   cancel_flag=cancel_flag)
+                                   cancel_flag=cancel_flag, api_key=judge_ep.get("api_key"))
     if resp.get("error"): return None
     return _parse_judge_score(resp)
 
